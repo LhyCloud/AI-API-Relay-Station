@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Console</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2324292f'/%3E%3Ctext x='16' y='22' font-family='Segoe UI,Arial,sans-serif' font-size='18' font-weight='700' fill='%23ffffff' text-anchor='middle'%3E%3C/text%3E%3C/svg%3E">
+<style>
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;display:flex;align-items:center;justify-content:center;background:#f6f8fa;
+ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif;
+ font-size:14px;color:#1f2328}
+.box{width:100%;max-width:320px;padding:24px}
+h1{margin:0 0 18px;font-size:16px;font-weight:600;text-align:center;color:#24292f}
+.card{background:#fff;border:1px solid #d0d7de;border-radius:6px;padding:16px}
+label{display:block;font-size:12px;font-weight:600;margin-bottom:5px}
+input{width:100%;padding:5px 10px;font:inherit;font-size:14px;line-height:20px;color:#1f2328;
+ background:#fff;border:1px solid #d0d7de;border-radius:6px;outline:none}
+input:focus{border-color:#0969da;box-shadow:0 0 0 3px rgba(9,105,218,.3)}
+button{margin-top:14px;width:100%;padding:6px 12px;font:inherit;font-size:13px;font-weight:500;
+ color:#fff;background:#1f883d;border:1px solid rgba(31,35,40,.15);border-radius:6px;cursor:pointer}
+button:hover{background:#1a7f37}
+button:disabled{opacity:.6;cursor:default}
+.err{min-height:16px;margin-top:8px;font-size:12px;color:#cf222e}
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>Console</h1>
+  <div class="card">
+    <form id="lf" autocomplete="off">
+      <label for="pw">密码</label>
+      <input type="password" id="pw" autocomplete="current-password" autofocus>
+      <button type="submit" id="go">登录</button>
+    </form>
+    <div class="err" id="err"></div>
+  </div>
+</div>
+<script src="/hash.js"></script>
+<script src="/login.js"></script>
+</body>
+</html>
