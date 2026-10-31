@@ -281,6 +281,9 @@ textarea{resize:vertical;min-height:64px;font-family:ui-monospace,Consolas,monos
 
 .keyline{display:flex;align-items:center;gap:6px}
 .keyline code{background:#f6f8fa;border:1px solid #d0d7de;border-radius:6px;padding:1px 6px;color:#1f2328}
+.keyline code.keymask{display:inline-block;cursor:pointer;user-select:all;max-width:118px;
+ overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.keyline code.keymask.expanded{max-width:200px;white-space:normal;word-break:break-all}
 
 .overlay{position:fixed;inset:0;background:rgba(27,31,36,.5);display:flex;align-items:flex-start;
  justify-content:center;padding:48px 16px;z-index:50;overflow-y:auto}
@@ -719,7 +722,8 @@ function viewUsers(){
   }
   html+='<div class="card"><div class="card-b tight"><table><thead><tr>'+
     '<th>用户</th><th>APIKey</th><th>可用分组</th><th class="num">总额度</th><th class="num">每日</th>'+
-    '<th class="num">已用</th><th>状态</th><th style="width:130px"></th></tr></thead><tbody>';
+    '<th class="num">今日已用</th><th class="num">累计已用</th><th>状态</th>'+
+    '<th style="width:130px"></th></tr></thead><tbody>';
   for(var i=0;i<us.length;i++){
     var u=us[i];
     var gnames=[];
@@ -737,12 +741,15 @@ function viewUsers(){
     var dailyCell=(u.dailyQuota>0)?numCell(u.dailyQuota):'<span class="hint">不限</span>';
     html+='<tr><td><div style="font-weight:500">'+esc(u.name)+'</div>'+
         (u.note?'<div class="hint" style="margin:0">'+esc(u.note)+'</div>':'')+'</td>'+
-      '<td><div class="keyline"><code>'+esc(u.apiKey)+'</code>'+
+      '<td><div class="keyline">'+
+        '<code class="keymask" data-full="'+esc(u.apiKey)+'" onclick="toggleKey(this)" '+
+          'title="点击展开 / 收起">'+esc(mask(u.apiKey))+'</code>'+
         '<button class="btn sm" data-copy="'+esc(u.apiKey)+'">复制</button></div></td>'+
       '<td>'+(gnames.length?gnames.map(function(n){return '<span class="label">'+esc(n)+'</span>';}).join(' '):
         '<span class="label red">无</span>')+'</td>'+
       '<td class="num">'+(u.unlimited?'<span class="label green">无限</span>':numCell(u.quota))+'</td>'+
       '<td class="num">'+dailyCell+'</td>'+
+      '<td class="num">'+numCell(usage.today)+'</td>'+
       '<td class="num">'+numCell(usage.total)+'</td>'+
       '<td>'+stBadge+'</td>'+
       '<td class="num"><button class="btn sm" onclick="editUser('+i+')">编辑</button> '+
@@ -750,6 +757,19 @@ function viewUsers(){
   }
   html+='</tbody></table></div></div>';
   return html;
+}
+
+// Key 折叠显示：默认只露前 6 位与后 4 位，点击可展开/收起；复制始终送出完整 Key
+function toggleKey(el){
+  var full=el.getAttribute('data-full')||'';
+  var ex=(' '+el.className+' ').indexOf(' expanded ')>-1;
+  if(ex){
+    el.className=(' '+el.className+' ').replace(' expanded ',' ').replace(/^\s+|\s+$/g,'');
+    el.textContent=mask(full);
+  }else{
+    el.className=(el.className?el.className+' ':'')+'expanded';
+    el.textContent=full;
+  }
 }
 
 function findUsage(id){
@@ -869,7 +889,8 @@ function viewStats(){
   for(var fi=0;fi<fapis.length;fi++){
     var fa=fapis[fi];
     gapis+='<tr><td>'+esc(fa.group)+' / '+esc(fa.name)+'</td>'+
-      '<td class="num">'+fmt(fa.count)+'</td>'+
+)HTML";
+static const char* kAdminJs3 = R"HTML(      '<td class="num">'+fmt(fa.count)+'</td>'+
       '<td style="min-width:160px"><div style="display:flex;align-items:center;gap:8px">'+
       '<div class="bar" style="flex:1"><i style="width:'+Math.min(100,fa.share)+'%"></i></div>'+
       '<span class="mono" style="color:#656d76;width:48px;text-align:right">'+pct(fa.share)+'</span></div></td></tr>';
@@ -878,8 +899,7 @@ function viewStats(){
   var fmodels='';
   var fms=(fr.models||[]).slice().sort(function(a,b){return b.count-a.count;});
   for(var fm=0;fm<fms.length;fm++){
-)HTML";
-static const char* kAdminJs3 = R"HTML(    fmodels+='<tr><td class="mono">'+esc(fms[fm].model)+'</td>'+
+    fmodels+='<tr><td class="mono">'+esc(fms[fm].model)+'</td>'+
       '<td class="num">'+fmt(fms[fm].count)+'</td>'+
       '<td style="min-width:160px"><div style="display:flex;align-items:center;gap:8px">'+
       '<div class="bar" style="flex:1"><i style="width:'+Math.min(100,fms[fm].share)+'%"></i></div>'+
@@ -1075,7 +1095,8 @@ function groupForm(g){
       '</div>'+
       '<div class="row2">'+
         '<div class="form-row"><label>基础地址</label><input type="text" data-f="baseUrl" data-i="'+i+
-          '" value="'+esc(a.baseUrl)+'" placeholder="https://api.openai.com/v1"></div>'+
+)HTML";
+static const char* kAdminJs4 = R"HTML(          '" value="'+esc(a.baseUrl)+'" placeholder="https://api.openai.com/v1"></div>'+
         '<div class="form-row"><label>每日限额（M tokens，0=不限）</label>'+
           '<input type="number" min="0" step="0.001" data-f="dailyLimitM" data-i="'+i+
           '" value="'+(a.dailyLimitM||0)+'"><div class="hint">北京时间 0 点重置，超限自动切换组内下一个 API</div></div>'+
@@ -1085,8 +1106,7 @@ function groupForm(g){
   }
   if(!g.apis.length) apis='<div class="empty" style="padding:8px 0 16px">暂无上游 API，点击下方按钮添加。</div>';
   return '<div class="mh"><span>'+(g.id?'编辑分组':'新建分组')+'</span><div class="sp"></div>'+
-)HTML";
-static const char* kAdminJs4 = R"HTML(    '<button class="x" onclick="closeModal()">×</button></div>'+
+    '<button class="x" onclick="closeModal()">×</button></div>'+
     '<div class="mb">'+
       '<div class="row2">'+
         '<div class="form-row"><label>分组名称</label><input type="text" id="g_name" value="'+esc(g.name)+
@@ -1366,7 +1386,8 @@ function saveGroup(){
 
 function delGroup(i){
   var g=CFG.groups[i];
-  if(!confirm('删除分组「'+g.name+'」？引用它的用户将失去该分组。')) return;
+)HTML";
+static const char* kAdminJs5 = R"HTML(  if(!confirm('删除分组「'+g.name+'」？引用它的用户将失去该分组。')) return;
   var payload=clone(CFG);
   delete payload.usage;
   payload.groups.splice(i,1);
@@ -1385,8 +1406,7 @@ function editUser(i){
   }else{
     u=clone(CFG.users[i]);
   }
-)HTML";
-static const char* kAdminJs5 = R"HTML(  MODAL={type:'user',index:i,data:u};
+  MODAL={type:'user',index:i,data:u};
   renderModal();
 }
 

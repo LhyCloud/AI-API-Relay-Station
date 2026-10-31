@@ -383,7 +383,8 @@ function viewUsers(){
   }
   html+='<div class="card"><div class="card-b tight"><table><thead><tr>'+
     '<th>用户</th><th>APIKey</th><th>可用分组</th><th class="num">总额度</th><th class="num">每日</th>'+
-    '<th class="num">已用</th><th>状态</th><th style="width:130px"></th></tr></thead><tbody>';
+    '<th class="num">今日已用</th><th class="num">累计已用</th><th>状态</th>'+
+    '<th style="width:130px"></th></tr></thead><tbody>';
   for(var i=0;i<us.length;i++){
     var u=us[i];
     var gnames=[];
@@ -401,12 +402,15 @@ function viewUsers(){
     var dailyCell=(u.dailyQuota>0)?numCell(u.dailyQuota):'<span class="hint">不限</span>';
     html+='<tr><td><div style="font-weight:500">'+esc(u.name)+'</div>'+
         (u.note?'<div class="hint" style="margin:0">'+esc(u.note)+'</div>':'')+'</td>'+
-      '<td><div class="keyline"><code>'+esc(u.apiKey)+'</code>'+
+      '<td><div class="keyline">'+
+        '<code class="keymask" data-full="'+esc(u.apiKey)+'" onclick="toggleKey(this)" '+
+          'title="点击展开 / 收起">'+esc(mask(u.apiKey))+'</code>'+
         '<button class="btn sm" data-copy="'+esc(u.apiKey)+'">复制</button></div></td>'+
       '<td>'+(gnames.length?gnames.map(function(n){return '<span class="label">'+esc(n)+'</span>';}).join(' '):
         '<span class="label red">无</span>')+'</td>'+
       '<td class="num">'+(u.unlimited?'<span class="label green">无限</span>':numCell(u.quota))+'</td>'+
       '<td class="num">'+dailyCell+'</td>'+
+      '<td class="num">'+numCell(usage.today)+'</td>'+
       '<td class="num">'+numCell(usage.total)+'</td>'+
       '<td>'+stBadge+'</td>'+
       '<td class="num"><button class="btn sm" onclick="editUser('+i+')">编辑</button> '+
@@ -414,6 +418,19 @@ function viewUsers(){
   }
   html+='</tbody></table></div></div>';
   return html;
+}
+
+// Key 折叠显示：默认只露前 6 位与后 4 位，点击可展开/收起；复制始终送出完整 Key
+function toggleKey(el){
+  var full=el.getAttribute('data-full')||'';
+  var ex=(' '+el.className+' ').indexOf(' expanded ')>-1;
+  if(ex){
+    el.className=(' '+el.className+' ').replace(' expanded ',' ').replace(/^\s+|\s+$/g,'');
+    el.textContent=mask(full);
+  }else{
+    el.className=(el.className?el.className+' ':'')+'expanded';
+    el.textContent=full;
+  }
 }
 
 function findUsage(id){

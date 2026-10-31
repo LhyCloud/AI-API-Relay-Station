@@ -116,6 +116,9 @@ textarea{resize:vertical;min-height:64px;font-family:ui-monospace,Consolas,monos
 
 .keyline{display:flex;align-items:center;gap:6px}
 .keyline code{background:#f6f8fa;border:1px solid #d0d7de;border-radius:6px;padding:1px 6px;color:#1f2328}
+.keyline code.keymask{display:inline-block;cursor:pointer;user-select:all;max-width:118px;
+ overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.keyline code.keymask.expanded{max-width:200px;white-space:normal;word-break:break-all}
 
 .overlay{position:fixed;inset:0;background:rgba(27,31,36,.5);display:flex;align-items:flex-start;
  justify-content:center;padding:48px 16px;z-index:50;overflow-y:auto}
