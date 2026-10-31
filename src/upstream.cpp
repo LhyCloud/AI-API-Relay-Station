@@ -155,7 +155,7 @@ std::string joinUrl(const Url& u, const std::string& suffix) {
 
 RelayOutcome relayUpstream(SOCKET client, const std::string& method, const std::string& targetPath,
                            const std::string& query, const std::string& body,
-                           const ApiEndpoint& api, bool streamMode) {
+                           const ApiEndpoint& api, bool streamMode, bool deferSend) {
     RelayOutcome out;
     Url u;
     if (!parseUrl(api.baseUrl, u)) {
@@ -275,6 +275,8 @@ RelayOutcome relayUpstream(SOCKET client, const std::string& method, const std::
     readAllBody(req, resp);
     out.started = true;
     out.ok = success;
+    out.body = resp;
+    out.contentType = ctype;
     if (success) {
         long long p = 0;
         long long c2 = 0;
@@ -289,7 +291,11 @@ RelayOutcome relayUpstream(SOCKET client, const std::string& method, const std::
     } else {
         out.error = resp.size() > 400 ? resp.substr(0, 400) : resp;
     }
-    sendResponse(client, out.status > 0 ? out.status : 502, ctype, resp);
+    if (deferSend) {
+        out.deferred = true;   // 由调用方决定是否发送（失败时可以改投下一个上游）
+    } else {
+        sendResponse(client, out.status > 0 ? out.status : 502, ctype, resp);
+    }
 
     WinHttpCloseHandle(req);
     WinHttpCloseHandle(con);

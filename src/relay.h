@@ -117,6 +117,7 @@ std::string sha256Hex(const std::string& data);
 std::string kdfHash(const std::string& saltHex, const std::string& password);
 bool secureEquals(const std::string& a, const std::string& b);
 std::string beijingDayKey(long long ts);
+std::string shiftedDayKey(long long ts, int offsetMinutes);
 bool ipMatches(const std::string& pattern, const std::string& ip);
 bool isLoopbackIp(const std::string& ip);
 
@@ -125,6 +126,10 @@ bool isLoopbackIp(const std::string& ip);
 /* ------------------------------------------------------------------ */
 /* config model                                                       */
 /* ------------------------------------------------------------------ */
+
+// 上游连续异常熔断阈值的默认值（可在面板设置；0 表示不熔断、失败立即顺延重试一次）
+const int kDefaultFailLimit = 3;
+
 struct ApiEndpoint {
     std::string id;
     std::string name;
@@ -151,6 +156,7 @@ struct User {
     bool unlimited = false;
     bool enabled = true;
     long long quota = 0;
+    long long dailyQuota = 0;   // 每日额度（tokens），0 表示不限
     std::vector<std::string> groupIds;
     long long created = 0;
 };
@@ -163,6 +169,8 @@ struct Settings {
     std::string adminHash;        // KDF(盐, 口令)（hex），不保存明文
     std::vector<std::string> ipWhitelist;  // 不受全局锁定，但仍有递增延迟
     std::vector<std::string> ipBlacklist;  // 直接断开，不返回任何内容
+    int failLimit = kDefaultFailLimit;     // 连续异常熔断阈值，0 = 不熔断、失败立即重试
+    int resetOffsetMinutes = 0;            // 每日额度/异常的重置时间偏移（相对北京时间 0 点）
 };
 
 struct Config {
@@ -197,6 +205,17 @@ public:
     long long usedTokens(const std::string& userId) const;
     bool findUserByKey(const std::string& key, User& out) const;
 
+    // 上游异常熔断：连续失败计数（按重置日界，跨天清零）
+    std::map<std::string, int> apiFailMap();
+    int apiFailCount(const std::string& apiId);
+    int recordApiFailure(const std::string& apiId, const std::string& model);
+    void recordApiSuccess(const std::string& apiId);
+    void resetApiFails(const std::string& apiId = std::string());
+
+    // 重置日界（北京时间 + 偏移）下的日期键与统计
+    std::string dayKeyNow() const;
+    long long userUsedToday(const std::string& userId) const;
+
     int port() const;
     bool isDirty() const;
     bool isBlacklisted(const std::string& ip) const;
@@ -204,10 +223,16 @@ public:
                     const std::vector<std::string>& blacklist);
 
 private:
+    void rollFailDayLocked();
+    std::string dayKeyLocked() const;
+
     mutable std::mutex mu_;
     Config cfg_;
     std::map<std::string, UsageBucket> usage_;
-    std::map<std::string, long long> apiUsage_;  // "apiId|YYYY-MM-DD(北京)" -> tokens
+    std::map<std::string, long long> apiUsage_;  // "apiId|dayKey" -> tokens
+    std::map<std::string, long long> failStats_; // "dayKey|apiId|model" -> 失败次数
+    std::map<std::string, int> apiFails_;        // apiId -> 当日连续异常次数
+    std::string apiFailDay_;                     // 计数所属日界
     std::string path_;
     bool dirty_ = false;
 };
@@ -243,16 +268,20 @@ void serverStop();
 struct RelayOutcome {
     bool started = false;
     bool ok = false;
+    bool deferred = false;   // 已拿到上游响应但还没发给客户端（便于失败后改投下一个上游）
     int status = 0;
     long long promptTokens = 0;
     long long completionTokens = 0;
     bool usageFound = false;
     std::string error;
+    std::string body;        // deferred 时的响应体
+    std::string contentType;
 };
 
 RelayOutcome relayUpstream(SOCKET client, const std::string& method, const std::string& targetPath,
                            const std::string& query, const std::string& body,
-                           const ApiEndpoint& api, bool streamMode);
+                           const ApiEndpoint& api, bool streamMode,
+                           bool deferSend = false);
 
 bool testUpstream(const std::string& baseUrl, const std::string& apiKey, int& status, std::string& info);
 

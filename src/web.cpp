@@ -360,6 +360,16 @@ function numCell(n){
 }
 function pct(x){return Number(x||0).toFixed(1)+'%';}
 function clone(o){return JSON.parse(JSON.stringify(o));}
+// tokens <-> M（面板按 M 输入，配置仍按 tokens 保存）
+function mValue(tokens){
+  var m=Number(tokens||0)/1e6;
+  return trimZero(m.toFixed(6));
+}
+function mToTokens(text){
+  var v=parseFloat(text);
+  if(!isFinite(v)||v<0) v=0;
+  return Math.round(v*1e6);
+}
 
 function rangeData(r){
   var br=(CFG&&CFG.usage&&CFG.usage.byRange)||{};
@@ -607,29 +617,52 @@ function countApis(){
 
 function viewGroups(){
   var gs=CFG.groups||[];
+  var lim=CFG.failLimit||3;
   var html='<div class="pagehead"><div><h2>API 分组</h2>'+
-    '<div class="sub">每组可配置多个上游 API，模型名对外加分组前缀</div></div>'+
-    '<div class="sp"></div><button class="btn primary" onclick="editGroup(null)">新建分组</button></div>';
+    '<div class="sub">每组可配置多个上游 API，模型名对外加分组前缀；上游连续异常 '+lim+
+    ' 次后自动切到组内下一个提供同名（设置名）模型的上游，次日 0 点（北京时间）重置</div></div>'+
+    '<div class="sp"></div>'+
+)HTML";
+static const char* kAdminJs2 = R"HTML(    '<button class="btn" onclick="resetApiFails(this)">重置异常计数</button>'+
+    '<button class="btn primary" onclick="editGroup(null)">新建分组</button></div>';
   if(!gs.length){
     html+='<div class="card"><div class="empty">还没有分组。新建一个分组，填入上游 OpenAI 兼容地址与密钥。</div></div>';
     return html;
   }
   for(var i=0;i<gs.length;i++){
     var g=gs[i];
+    var active=null, allTripped=(g.apis||[]).length>0;
+    for(var q=0;q<(g.apis||[]).length;q++){
+      if(g.apis[q].id===g.activeApi){ active=g.apis[q]; }
+      if(!g.apis[q].tripped) allTripped=false;
+    }
+    var activeLabel = active
+      ? '<span class="label '+(allTripped?'red':'green')+'" title="组内第一个未熔断的上游">当前上游 '+
+        esc(active.name||active.baseUrl)+'</span>'
+      : '<span class="label gray">未配置上游</span>';
     var apis='';
     if(!g.apis||!g.apis.length){
       apis='<div class="empty" style="padding:16px">该分组暂无上游 API</div>';
     }else{
-)HTML";
-static const char* kAdminJs2 = R"HTML(      apis+='<table><thead><tr><th>名称</th><th>地址</th><th>密钥</th><th class="num">模型</th>'+
-            '<th style="width:120px"></th></tr></thead><tbody>';
+      apis+='<table><thead><tr><th>名称</th><th>地址</th><th>密钥</th><th class="num">模型</th>'+
+            '<th>状态</th><th style="width:160px"></th></tr></thead><tbody>';
       for(var k=0;k<g.apis.length;k++){
         var a=g.apis[k];
+        var st;
+        if(a.tripped) st='<span class="label red">已熔断 '+(a.fails||0)+'/'+lim+'</span>';
+        else if(a.fails>0) st='<span class="label gray">异常 '+(a.fails||0)+'/'+lim+'</span>';
+        else st='<span class="label green">正常</span>';
+        if(a.id===g.activeApi) st+=' <span class="label blue">在用</span>';
+        var resetBtn = a.fails>0
+          ? '<button class="btn sm" onclick="resetApiFails(this,\''+esc(a.id)+'\')">重置</button>'
+          : '';
         apis+='<tr><td>'+esc(a.name||'-')+'</td>'+
           '<td><code>'+esc(a.baseUrl)+'</code></td>'+
           '<td><code>'+esc(mask(a.apiKey))+'</code></td>'+
           '<td class="num" title="'+esc((a.models||[]).join(', '))+'">'+(a.models||[]).length+'</td>'+
-          '<td class="num"><button class="btn sm" onclick="testApi('+i+','+k+',this)">测试</button></td></tr>';
+          '<td>'+st+'</td>'+
+          '<td class="num"><button class="btn sm" onclick="testApi('+i+','+k+',this)">测试</button> '+
+          resetBtn+'</td></tr>';
       }
       apis+='</tbody></table>';
     }
@@ -637,12 +670,24 @@ static const char* kAdminJs2 = R"HTML(      apis+='<table><thead><tr><th>名称<
       '<span>'+esc(g.name)+'</span>'+
       '<span class="label blue">前缀 '+esc(g.prefix)+'</span>'+
       '<span class="label gray">'+g.apis.length+' 个 API</span>'+
+      activeLabel+
       '<div class="sp"></div>'+
       '<button class="btn sm" onclick="editGroup('+i+')">编辑</button>'+
       '<button class="btn sm danger" onclick="delGroup('+i+')">删除</button>'+
       '</div><div class="card-b tight">'+apis+'</div></div>';
   }
   return html;
+}
+
+function resetApiFails(btn,apiId){
+  var msg=apiId?'确认重置该上游的异常计数？':'确认重置全部上游的异常计数？';
+  if(!window.confirm(msg)) return;
+  btn.disabled=true;
+  api('/api/apifail/reset','POST',apiId?{apiId:apiId}:{}).then(function(r){
+    btn.disabled=false;
+    if(r.status===200){ toast('异常计数已重置'); refreshAll(); }
+    else { toast('重置失败',true); }
+  });
 }
 
 function mask(k){
@@ -673,8 +718,8 @@ function viewUsers(){
     return html;
   }
   html+='<div class="card"><div class="card-b tight"><table><thead><tr>'+
-    '<th>用户</th><th>APIKey</th><th>可用分组</th><th class="num">额度</th><th class="num">已用</th>'+
-    '<th>状态</th><th style="width:130px"></th></tr></thead><tbody>';
+    '<th>用户</th><th>APIKey</th><th>可用分组</th><th class="num">总额度</th><th class="num">每日</th>'+
+    '<th class="num">已用</th><th>状态</th><th style="width:130px"></th></tr></thead><tbody>';
   for(var i=0;i<us.length;i++){
     var u=us[i];
     var gnames=[];
@@ -684,6 +729,12 @@ function viewUsers(){
       }
     }
     var usage=findUsage(u.id);
+    var qs=(usage&&usage.quotaState)||(u.enabled?'ok':'disabled');
+    var stBadge = qs==='disabled' ? '<span class="label gray">停用</span>'
+      : qs==='total' ? '<span class="label red">总额度用尽</span>'
+      : qs==='daily' ? '<span class="label red">当日额度用尽</span>'
+      : '<span class="label green">正常</span>';
+    var dailyCell=(u.dailyQuota>0)?numCell(u.dailyQuota):'<span class="hint">不限</span>';
     html+='<tr><td><div style="font-weight:500">'+esc(u.name)+'</div>'+
         (u.note?'<div class="hint" style="margin:0">'+esc(u.note)+'</div>':'')+'</td>'+
       '<td><div class="keyline"><code>'+esc(u.apiKey)+'</code>'+
@@ -691,8 +742,9 @@ function viewUsers(){
       '<td>'+(gnames.length?gnames.map(function(n){return '<span class="label">'+esc(n)+'</span>';}).join(' '):
         '<span class="label red">无</span>')+'</td>'+
       '<td class="num">'+(u.unlimited?'<span class="label green">无限</span>':numCell(u.quota))+'</td>'+
+      '<td class="num">'+dailyCell+'</td>'+
       '<td class="num">'+numCell(usage.total)+'</td>'+
-      '<td>'+(u.enabled?'<span class="label green">启用</span>':'<span class="label gray">停用</span>')+'</td>'+
+      '<td>'+stBadge+'</td>'+
       '<td class="num"><button class="btn sm" onclick="editUser('+i+')">编辑</button> '+
         '<button class="btn sm danger" onclick="delUser('+i+')">删除</button></td></tr>';
   }
@@ -706,11 +758,37 @@ function findUsage(id){
   return {today:0,week:0,total:0,requests:0,share:0,models:[]};
 }
 
+// 直接写入剪贴板：https/localhost 用 Clipboard API，HTTP 面板用隐藏 textarea 兼容方案，
+// 两条路都失败才提示手动选中，绝不弹窗打断操作
 function copyText(t){
+  var done=function(){ toast('已复制'); };
+  var legacy=function(){
+    var ta=document.createElement('textarea');
+    ta.value=t;
+    ta.setAttribute('readonly','');
+    ta.style.position='fixed';
+    ta.style.top='-100px';
+    ta.style.left='-100px';
+    ta.style.opacity='0';
+    var ok=false;
+    document.body.appendChild(ta);
+    try{
+      ta.focus();
+      ta.select();
+      if(ta.setSelectionRange) ta.setSelectionRange(0,t.length);
+      ok=document.execCommand('copy');
+    }catch(e){ ok=false; }
+    if(ta.parentNode) ta.parentNode.removeChild(ta);
+    return !!ok;
+  };
   if(navigator.clipboard&&navigator.clipboard.writeText){
-    navigator.clipboard.writeText(t).then(function(){toast('已复制');},function(){window.prompt('复制以下内容',t);});
+    navigator.clipboard.writeText(t).then(done,function(){
+      if(legacy()) done(); else toast('复制失败，请手动选中 Key 复制',true);
+    });
+  }else if(legacy()){
+    done();
   }else{
-    window.prompt('复制以下内容',t);
+    toast('复制失败，请手动选中 Key 复制',true);
   }
 }
 
@@ -782,10 +860,37 @@ function viewStats(){
       (shown.length?svgLineChart(labels,shown,{}):'<div class="empty">已全部隐藏，点击图例恢复</div>');
   }
 
+  var fail=(CFG.usage&&CFG.usage.failures)||{};
+  var fr=fail[RANGE]||{total:0,apis:[],models:[]};
+  var fth=(fail.threshold!==undefined)?fail.threshold:(CFG.failLimit||0);
+  var fnote=(fth>0)?('阈值 '+fth+' 次'):'阈值 0（不熔断，异常立即重试）';
+  var gapis='';
+  var fapis=(fr.apis||[]).slice().sort(function(a,b){return b.count-a.count;});
+  for(var fi=0;fi<fapis.length;fi++){
+    var fa=fapis[fi];
+    gapis+='<tr><td>'+esc(fa.group)+' / '+esc(fa.name)+'</td>'+
+      '<td class="num">'+fmt(fa.count)+'</td>'+
+      '<td style="min-width:160px"><div style="display:flex;align-items:center;gap:8px">'+
+      '<div class="bar" style="flex:1"><i style="width:'+Math.min(100,fa.share)+'%"></i></div>'+
+      '<span class="mono" style="color:#656d76;width:48px;text-align:right">'+pct(fa.share)+'</span></div></td></tr>';
+  }
+  if(!gapis) gapis='<tr><td colspan="3"><div class="empty">暂无上游失败记录</div></td></tr>';
+  var fmodels='';
+  var fms=(fr.models||[]).slice().sort(function(a,b){return b.count-a.count;});
+  for(var fm=0;fm<fms.length;fm++){
+)HTML";
+static const char* kAdminJs3 = R"HTML(    fmodels+='<tr><td class="mono">'+esc(fms[fm].model)+'</td>'+
+      '<td class="num">'+fmt(fms[fm].count)+'</td>'+
+      '<td style="min-width:160px"><div style="display:flex;align-items:center;gap:8px">'+
+      '<div class="bar" style="flex:1"><i style="width:'+Math.min(100,fms[fm].share)+'%"></i></div>'+
+      '<span class="mono" style="color:#656d76;width:48px;text-align:right">'+pct(fms[fm].share)+'</span></div></td></tr>';
+  }
+  if(!fmodels) fmodels='<tr><td colspan="3"><div class="empty">暂无模型失败记录</div></td></tr>';
+
   return '<div class="pagehead"><div><h2>统计</h2>'+
     '<div class="sub">'+esc(u.time||'')+' · '+RANGE_LABEL[RANGE]+'共 '+
     '<span title="'+fmt(rd.tokens)+'">'+fmtBig(rd.tokens)+'</span> tokens · '+
-    fmt(rd.requests)+' 次请求</div></div><div class="sp"></div>'+
+    fmt(rd.requests)+' 次请求 · 失败 '+fmt(fr.total||0)+' 次</div></div><div class="sp"></div>'+
     rangeTabs()+
     '<button class="btn" onclick="refreshAll()">刷新</button></div>'+
    '<div class="card"><div class="card-h">各用户用量'+
@@ -797,6 +902,16 @@ function viewStats(){
      '<span class="label gray">'+RANGE_LABEL[RANGE]+'</span></div><div class="card-b tight">'+
      '<table><thead><tr><th>模型</th><th class="num">用量（tokens）</th><th>占比</th></tr></thead>'+
      '<tbody>'+mrows+'</tbody></table></div></div>'+
+   '<div class="card"><div class="card-h">上游失败次数'+
+     '<span class="label gray">'+RANGE_LABEL[RANGE]+'</span>'+
+     '<span class="label '+(fth>0?'gray':'blue')+'">'+esc(fnote)+'</span>'+
+     '<div class="sp"></div><span class="hint" style="margin:0">共 '+fmt(fr.total||0)+' 次</span></div>'+
+     '<div class="card-b tight"><table><thead><tr><th>上游（分组 / 名称）</th>'+
+     '<th class="num">失败次数</th><th>占比</th></tr></thead><tbody>'+gapis+'</tbody></table></div></div>'+
+   '<div class="card"><div class="card-h">模型失败次数'+
+     '<span class="label gray">'+RANGE_LABEL[RANGE]+'</span></div><div class="card-b tight">'+
+     '<table><thead><tr><th>模型</th><th class="num">失败次数</th><th>占比</th></tr></thead>'+
+     '<tbody>'+fmodels+'</tbody></table></div></div>'+
    '<div class="card"><div class="card-h">每日用量趋势（全体 · 近 14 天）</div>'+
      '<div class="card-b">'+totalChart+'</div></div>'+
    '<div class="card"><div class="card-h">每人每日用量（近 14 天）'+
@@ -854,8 +969,7 @@ function viewSecurity(){
      '<table><thead><tr><th>IP</th><th class="num">密码错误次数</th><th class="num">下次可尝试</th>'+
      '<th>标记</th><th style="width:170px"></th></tr></thead><tbody>'+rows+'</tbody></table></div></div>'+
    '<div class="row2">'+
-)HTML";
-static const char* kAdminJs3 = R"HTML(     '<div class="card"><div class="card-h">IP 白名单</div><div class="card-b">'+
+     '<div class="card"><div class="card-h">IP 白名单</div><div class="card-b">'+
        '<div style="margin-bottom:10px">'+ipTag(s.whitelist,'whitelist-remove')+'</div>'+
        '<div class="keyline"><input type="text" id="sec_wl" placeholder="例如 10.10.18.0/24">'+
        '<button class="btn sm" id="sec_wl_add">添加</button></div>'+
@@ -884,7 +998,9 @@ function secAction(action,ip){
 
 function viewSettings(){
   var s=CFG.settings;
-  return '<div class="pagehead"><div><h2>设置</h2><div class="sub">服务端口、面板名称、访问范围与管理密码</div></div></div>'+
+  var off=Number(s.resetOffsetMinutes||0);
+  var fl=(s.failLimit===undefined?3:s.failLimit);
+  return '<div class="pagehead"><div><h2>设置</h2><div class="sub">服务端口、面板名称、访问范围、熔断与重置规则、管理密码</div></div></div>'+
    '<div class="card" style="max-width:560px"><div class="card-h">基础设置</div><div class="card-b">'+
      '<div class="form-row"><label>监听端口</label>'+
        '<input type="number" id="s_port" min="1" max="65535" value="'+s.port+'">'+
@@ -894,6 +1010,15 @@ function viewSettings(){
      '<div class="form-row"><label>访问范围</label>'+
        '<label class="check"><input type="checkbox" id="s_public"'+(s.panelPublic?' checked':'')+'> 允许公网访问控制面板</label>'+
        '<div class="hint">关闭后仅本机可打开面板，外网访问 / 与 /api 一律返回 404；/v1 不受影响。</div></div>'+
+     '<div class="form-row"><label>上游熔断阈值（连续异常次数）</label>'+
+       '<input type="number" id="s_fail" min="0" max="99" value="'+fl+'">'+
+       '<div class="hint">默认 3：同一上游连续 3 次异常后不再选它，改用组内下一个提供同名模型的上游；'+
+       '到重置时间点自动恢复。<br>填 0 表示不熔断：异常不返回给调用方，立即顺延到组内下一个上游重试一次'+
+       '（只顺延一次，第二次仍失败才返回错误）。</div></div>'+
+     '<div class="form-row"><label>每日重置时间偏移（小时）</label>'+
+       '<input type="number" id="s_offset" min="-12" max="12" step="1" value="'+trimZero((off/60).toFixed(2))+'">'+
+       '<div class="hint">0 = 北京时间 0 点；填 4 表示凌晨 4 点重置，填 -2 表示前一天 22 点。'+
+       '影响用户每日额度、上游每日限额与上游异常计数。</div></div>'+
      '<div class="form-row"><label>修改管理密码</label>'+
        '<input type="password" id="s_pw" autocomplete="new-password" placeholder="留空则不修改">'+
        '<div class="hint">密码经加盐哈希后传输与保存，明文不会出现在网络上或配置文件中。</div></div>'+
@@ -937,6 +1062,10 @@ function groupForm(g){
     var a=g.apis[i];
     apis+='<div class="apibox">'+
       '<div class="h"><span class="t">上游 API #'+(i+1)+'</span><div class="sp"></div>'+
+      '<button class="btn sm" title="上移（优先级更高）" onclick="moveApi('+i+',-1)"'+
+        (i===0?' disabled':'')+'>↑ 上移</button>'+
+      '<button class="btn sm" title="下移" onclick="moveApi('+i+',1)"'+
+        (i===g.apis.length-1?' disabled':'')+'>↓ 下移</button>'+
       '<button class="btn sm danger" onclick="removeApi('+i+')">移除</button></div>'+
       '<div class="row2">'+
         '<div class="form-row"><label>名称</label><input type="text" data-f="name" data-i="'+i+
@@ -956,7 +1085,8 @@ function groupForm(g){
   }
   if(!g.apis.length) apis='<div class="empty" style="padding:8px 0 16px">暂无上游 API，点击下方按钮添加。</div>';
   return '<div class="mh"><span>'+(g.id?'编辑分组':'新建分组')+'</span><div class="sp"></div>'+
-    '<button class="x" onclick="closeModal()">×</button></div>'+
+)HTML";
+static const char* kAdminJs4 = R"HTML(    '<button class="x" onclick="closeModal()">×</button></div>'+
     '<div class="mb">'+
       '<div class="row2">'+
         '<div class="form-row"><label>分组名称</label><input type="text" id="g_name" value="'+esc(g.name)+
@@ -964,7 +1094,8 @@ function groupForm(g){
         '<div class="form-row"><label>模型前缀</label><input type="text" id="g_prefix" value="'+esc(g.prefix)+
           '" placeholder="例如 ds/"></div>'+
       '</div>'+
-      '<div class="hint" style="margin:-6px 0 14px">对外模型名 = 前缀 + 模型名，例如 <code>ds/deepseek-chat</code>。前缀留空则用分组名。</div>'+
+      '<div class="hint" style="margin:-6px 0 14px">对外模型名 = 前缀 + 模型名，例如 <code>ds/deepseek-chat</code>。前缀留空则用分组名。<br>'+
+        '上游按从上到下的顺序取用：越靠前越优先，额度用尽或连续异常时才用后面的。</div>'+
       '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'+
         '<div style="font-weight:600;font-size:12px">上游 API</div><div style="flex:1"></div>'+
         '<button class="btn sm" onclick="addApi()">添加 API</button></div>'+
@@ -1087,13 +1218,17 @@ function userForm(u){
       '</div>'+
       '<div class="form-row"><label>可用 AI 分组</label>'+gs+'</div>'+
       '<div class="row2">'+
-        '<div class="form-row"><label>额度（tokens）</label>'+
-          '<input type="number" id="u_quota" min="0" value="'+u.quota+'"'+(u.unlimited?' disabled':'')+'>'+
+        '<div class="form-row"><label>总额度（M tokens）</label>'+
+          '<input type="number" id="u_quota" min="0" step="0.01" value="'+mValue(u.quota)+'"'+(u.unlimited?' disabled':'')+'>'+
           '<label class="check" style="margin-top:8px"><input type="checkbox" id="u_unlimited"'+
-          (u.unlimited?' checked':'')+' onchange="toggleUnlimited()"> 无限额度</label></div>'+
-        '<div class="form-row"><label>备注</label><input type="text" id="u_note" value="'+esc(u.note)+
-          '" placeholder="可选"></div>'+
+          (u.unlimited?' checked':'')+' onchange="toggleUnlimited()"> 无限额度</label>'+
+          '<div class="hint">1 M = 1,000,000 tokens。不勾无限且填 0 表示不允许调用。</div></div>'+
+        '<div class="form-row"><label>每日额度（M tokens，0=不限）</label>'+
+          '<input type="number" id="u_daily" min="0" step="0.01" value="'+mValue(u.dailyQuota)+'">'+
+          '<div class="hint">按重置时间点每天清零，与总额度同时生效，任一用尽即返回 429。</div></div>'+
       '</div>'+
+      '<div class="form-row"><label>备注</label><input type="text" id="u_note" value="'+esc(u.note)+
+        '" placeholder="可选"></div>'+
       '<label class="check"><input type="checkbox" id="u_enabled"'+(u.enabled?' checked':'')+'> 启用该用户</label>'+
     '</div>'+
     '<div class="mf"><button class="btn" onclick="closeModal()">取消</button>'+
@@ -1101,8 +1236,7 @@ function userForm(u){
 }
 
 function toggleUnlimited(){
-)HTML";
-static const char* kAdminJs4 = R"HTML(  document.getElementById('u_quota').disabled=document.getElementById('u_unlimited').checked;
+  document.getElementById('u_quota').disabled=document.getElementById('u_unlimited').checked;
 }
 
 function genKey(){
@@ -1192,6 +1326,14 @@ function removeApi(i){
   MODAL.data.apis.splice(i,1);
   renderModal();
 }
+function moveApi(i,d){
+  var list=MODAL&&MODAL.data&&MODAL.data.apis;
+  if(!list) return;
+  var j=i+d;
+  if(j<0||j>=list.length) return;
+  var t=list[i]; list[i]=list[j]; list[j]=t;
+  renderModal();
+}
 
 function editGroup(i){
   var g=null;
@@ -1237,13 +1379,14 @@ function delGroup(i){
 function editUser(i){
   var u;
   if(i===null||i===undefined){
-    u={id:'',name:'',apiKey:'',note:'',unlimited:false,enabled:true,quota:1000000,groupIds:[],created:0};
+    u={id:'',name:'',apiKey:'',note:'',unlimited:false,enabled:true,quota:1000000,dailyQuota:0,groupIds:[],created:0};
     var gs=CFG.groups||[];
     for(var k=0;k<gs.length;k++) u.groupIds.push(gs[k].id);
   }else{
     u=clone(CFG.users[i]);
   }
-  MODAL={type:'user',index:i,data:u};
+)HTML";
+static const char* kAdminJs5 = R"HTML(  MODAL={type:'user',index:i,data:u};
   renderModal();
 }
 
@@ -1254,7 +1397,8 @@ function saveUser(){
   u.apiKey=(document.getElementById('u_key').value||'').trim();
   u.note=document.getElementById('u_note').value||'';
   u.unlimited=document.getElementById('u_unlimited').checked;
-  u.quota=parseInt(document.getElementById('u_quota').value,10)||0;
+  u.quota=mToTokens(document.getElementById('u_quota').value);
+  u.dailyQuota=mToTokens(document.getElementById('u_daily').value);
   u.enabled=document.getElementById('u_enabled').checked;
   u.groupIds=[];
   var cbs=document.querySelectorAll('#overlay [data-g]');
@@ -1358,6 +1502,10 @@ function bindView(){
       var port=parseInt(document.getElementById('s_port').value,10);
       if(!(port>0&&port<65536)){ toast('端口不合法',true); return; }
       var pub=document.getElementById('s_public').checked;
+      var fl=parseInt(document.getElementById('s_fail').value,10);
+      if(!(fl>=0&&fl<=99)){ toast('熔断阈值需在 0 - 99 之间',true); return; }
+      var oh=parseFloat(document.getElementById('s_offset').value);
+      if(!isFinite(oh)||oh<-12||oh>12){ toast('重置偏移需在 -12 到 12 小时之间',true); return; }
       var np=document.getElementById('s_pw').value||'';
       if(np&&np.length<4){ toast('密码至少 4 位',true); return; }
       var payload=clone(CFG);
@@ -1365,6 +1513,8 @@ function bindView(){
       payload.settings.port=port;
       payload.settings.siteName=document.getElementById('s_name').value||'AI Relay';
       payload.settings.panelPublic=pub;
+      payload.settings.failLimit=fl;
+      payload.settings.resetOffsetMinutes=Math.round(oh*60);
       var go=function(){ sendConfig(payload,'设置已保存'); };
       if(!np){ go(); return; }
       s.disabled=true;
@@ -1414,6 +1564,6 @@ const std::string& adminHtml() {
 }
 
 const std::string& adminJs() {
-    static const std::string s = std::string(kAdminJs1) + kAdminJs2 + kAdminJs3 + kAdminJs4;
+    static const std::string s = std::string(kAdminJs1) + kAdminJs2 + kAdminJs3 + kAdminJs4 + kAdminJs5;
     return s;
 }

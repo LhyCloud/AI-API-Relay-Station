@@ -168,6 +168,7 @@ struct Route {
     const ApiEndpoint* api = nullptr;
     std::string model;    // 上游模型名
     std::string exposed;  // 对外名称（不含分组前缀）
+    bool trippedFallback = false;  // 组内 API 全部熔断，回落第一个
 };
 
 std::string exposedName(const ApiEndpoint& a, const std::string& upstream) {
@@ -181,69 +182,110 @@ bool apiOverQuota(Store& store, const ApiEndpoint& a) {
     return store.apiUsedToday(a.id) >= limit;
 }
 
-Route resolveRoute(const Config& cfg, const User& user, const std::string& requested,
-                   Store& store, bool& quotaBlocked) {
-    Route r;
-    std::vector<const Group*> allowed;
-    for (std::size_t i = 0; i < user.groupIds.size(); ++i) {
-        const Group* g = findGroup(cfg, user.groupIds[i]);
-        if (g) allowed.push_back(g);
-    }
+int failCountOf(const std::map<std::string, int>& fails, const std::string& apiId) {
+    std::map<std::string, int>::const_iterator it = fails.find(apiId);
+    return it == fails.end() ? 0 : it->second;
+}
 
-    // 带分组前缀：按 API 顺序挑选，额度用完则自动切换到下一个
-    for (std::size_t i = 0; i < allowed.size() && !r.ok; ++i) {
-        const Group* g = allowed[i];
-        if (g->prefix.empty() || !util::startsWith(requested, g->prefix)) continue;
-        std::string suffix = requested.substr(g->prefix.size());
-        if (suffix.empty()) continue;
-        for (std::size_t k = 0; k < g->apis.size() && !r.ok; ++k) {
-            const ApiEndpoint& a = g->apis[k];
-            std::string upstream;
-            bool found = false;
-            if (a.models.empty()) {
-                upstream = suffix;
-                found = true;
-            } else {
-                for (std::size_t m = 0; m < a.models.size(); ++m) {
-                    if (exposedName(a, a.models[m]) == suffix) {
-                        upstream = a.models[m];
-                        found = true;
-                        break;
-                    }
-                }
-            }
-            if (!found) continue;
-            if (apiOverQuota(store, a)) {
-                quotaBlocked = true;
-                continue;
-            }
-            r.ok = true;
-            r.group = g;
-            r.api = &a;
-            r.model = upstream;
-            r.exposed = suffix;
+// 该 API 是否提供对外名称为 wanted 的模型；成立时给出上游真名
+bool apiServes(const ApiEndpoint& a, const std::string& wanted, std::string& upstream) {
+    if (a.models.empty()) {   // 未配置模型清单：按同名直接透传
+        upstream = wanted;
+        return true;
+    }
+    for (std::size_t m = 0; m < a.models.size(); ++m) {
+        if (exposedName(a, a.models[m]) == wanted) {
+            upstream = a.models[m];
+            return true;
         }
     }
+    return false;
+}
 
-    // 不带前缀：直接按对外名称匹配
-    for (std::size_t i = 0; i < allowed.size() && !r.ok; ++i) {
-        const Group* g = allowed[i];
-        for (std::size_t k = 0; k < g->apis.size() && !r.ok; ++k) {
-            const ApiEndpoint& a = g->apis[k];
-            for (std::size_t m = 0; m < a.models.size(); ++m) {
-                if (exposedName(a, a.models[m]) != requested) continue;
-                if (apiOverQuota(store, a)) {
-                    quotaBlocked = true;
-                    continue;
-                }
-                r.ok = true;
-                r.group = g;
-                r.api = &a;
-                r.model = a.models[m];
-                r.exposed = requested;
+/* 选路规则
+ * 1. 模型名必须带分组前缀；不带前缀一律视为模型不存在（不自动挑组）
+ * 2. 前缀只认该用户被授权的分组，且按面板中自上而下的顺序取第一个匹配的分组
+ * 3. 组内按 API 顺序取第一个「提供该对外名称 + 今日额度未用尽 + 未熔断」的
+ * 4. 组内全部上游都熔断时，回落到组内第一个提供该模型的上游（不跨组）
+ */
+Route resolveRoute(const Config& cfg, const User& user, const std::string& requested,
+                   Store& store, const std::map<std::string, int>& fails, bool& quotaBlocked) {
+    Route r;
+    quotaBlocked = false;
+    const int failLimit = cfg.settings.failLimit;
+
+    const Group* group = nullptr;
+    std::string wanted;
+    for (std::size_t i = 0; i < cfg.groups.size(); ++i) {
+        const Group& g = cfg.groups[i];
+        bool allowed = false;
+        for (std::size_t k = 0; k < user.groupIds.size(); ++k) {
+            if (user.groupIds[k] == g.id) {
+                allowed = true;
                 break;
             }
         }
+        if (!allowed) continue;
+        if (g.prefix.empty()) continue;
+        if (requested.size() <= g.prefix.size()) continue;
+        if (!util::startsWith(requested, g.prefix)) continue;
+        group = &g;
+        wanted = requested.substr(g.prefix.size());
+        break;
+    }
+    if (!group) return r;   // 必须带组前缀，找不到就是 404
+
+    Route fallback;
+    for (std::size_t k = 0; k < group->apis.size(); ++k) {
+        const ApiEndpoint& a = group->apis[k];
+        std::string upstream;
+        if (!apiServes(a, wanted, upstream)) continue;
+        if (apiOverQuota(store, a)) {
+            quotaBlocked = true;
+            continue;
+        }
+        if (failLimit > 0 && failCountOf(fails, a.id) >= failLimit) {
+            if (!fallback.ok) {
+                fallback.ok = true;
+                fallback.group = group;
+                fallback.api = &a;
+                fallback.model = upstream;
+                fallback.exposed = wanted;
+                fallback.trippedFallback = true;
+            }
+            continue;
+        }
+        r.ok = true;
+        r.group = group;
+        r.api = &a;
+        r.model = upstream;
+        r.exposed = wanted;
+        return r;
+    }
+
+    if (fallback.ok) return fallback;
+    return r;
+}
+
+// 组内下一个可用候选（跳过指定 API），用于 failLimit=0 时立即顺延一次
+Route nextInGroup(const Group& g, const std::string& wanted, const std::string& skipApiId,
+                  Store& store, bool& quotaBlocked) {
+    Route r;
+    for (std::size_t k = 0; k < g.apis.size(); ++k) {
+        const ApiEndpoint& a = g.apis[k];
+        if (!skipApiId.empty() && a.id == skipApiId) continue;
+        std::string upstream;
+        if (!apiServes(a, wanted, upstream)) continue;
+        if (apiOverQuota(store, a)) {
+            quotaBlocked = true;
+            continue;
+        }
+        r.ok = true;
+        r.group = &g;
+        r.api = &a;
+        r.model = upstream;
+        r.exposed = wanted;
+        return r;
     }
     return r;
 }
@@ -287,7 +329,11 @@ void handleV1(SOCKET s, Store& store, const HttpRequest& req) {
         return;
     }
     if (!user.unlimited && store.usedTokens(user.id) >= user.quota) {
-        jsonError(s, 429, "额度已用尽，请联系管理员", "insufficient_quota", "insufficient_quota");
+        jsonError(s, 429, "总额度已用尽，请联系管理员", "insufficient_quota", "insufficient_quota");
+        return;
+    }
+    if (user.dailyQuota > 0 && store.userUsedToday(user.id) >= user.dailyQuota) {
+        jsonError(s, 429, "当日额度已用尽，请次日再试", "insufficient_quota", "insufficient_quota");
         return;
     }
 
@@ -316,7 +362,8 @@ void handleV1(SOCKET s, Store& store, const HttpRequest& req) {
     }
 
     bool quotaBlocked = false;
-    Route route = resolveRoute(cfg, user, requested, store, quotaBlocked);
+    std::map<std::string, int> fails = store.apiFailMap();
+    Route route = resolveRoute(cfg, user, requested, store, fails, quotaBlocked);
     if (!route.ok || !route.api) {
         if (quotaBlocked) {
             jsonError(s, 429, "所有上游 API 今日额度已用尽", "insufficient_quota", "insufficient_quota");
@@ -326,39 +373,101 @@ void handleV1(SOCKET s, Store& store, const HttpRequest& req) {
         return;
     }
 
-    std::string forwardBody = req.body;
-    if (requested != route.model) {
-        body.set("model", json::Value::str(route.model));
-        forwardBody = body.dump(0);
-    }
     bool wantStream = body.get("stream").asBool(false);
+    const int failLimit = cfg.settings.failLimit;
 
-    RelayOutcome out = relayUpstream(s, req.method, req.path, req.query, forwardBody, *route.api, wantStream);
-    if (!out.started) {
-        jsonError(s, 502, out.error.empty() ? "上游服务不可用" : out.error, "upstream_error");
-        logLine("上游失败 " + user.name + " " + requested + " : " + out.error);
-        return;
+    // 组内提供该模型的上游全部熔断：本轮清零，从第一个重新开始按规则切换
+    if (route.trippedFallback) {
+        for (std::size_t k = 0; k < route.group->apis.size(); ++k) {
+            const ApiEndpoint& a = route.group->apis[k];
+            std::string up;
+            if (apiServes(a, route.exposed, up)) store.resetApiFails(a.id);
+        }
+        logLine("组内上游全部熔断，重置异常计数后从 " + route.group->name + "/" +
+                route.api->name + " 重新开始");
     }
-    if (out.ok) {
-        std::string statModel = route.group ? (route.group->prefix + route.exposed) : route.exposed;
+    // 阈值为 0 时不熔断，但异常要立即顺延一次，因此第一跳先不把响应发给客户端
+    bool deferFirst = (failLimit == 0);
+    bool retried = false;
+
+    for (;;) {
+        std::string forwardBody = req.body;
+        if (requested != route.model) {
+            body.set("model", json::Value::str(route.model));
+            forwardBody = body.dump(0);
+        }
+        std::string via = route.group->name + "/" + route.api->name;
+        std::string statModel = route.group->prefix + route.exposed;
+
+        RelayOutcome out = relayUpstream(s, req.method, req.path, req.query, forwardBody,
+                                         *route.api, wantStream, deferFirst && !retried);
+        bool failed = (!out.started) || (!out.ok);
+
+        if (failed) {
+            bool fault = (!out.started);
+            if (out.started) {
+                int st = out.status;
+                // 上游自身故障才算异常；400/413/415/422 属于请求本身的问题
+                fault = (st >= 500) || st == 401 || st == 403 || st == 404 ||
+                        st == 408 || st == 409 || st == 429;
+            }
+            int n = fault ? store.recordApiFailure(route.api->id, statModel) : 0;
+            std::string detail = out.started ? ("上游返回 " + std::to_string(out.status))
+                                             : ("上游无响应: " + out.error);
+            logLine(user.name + "  " + requested + " via " + via + " -> " + detail +
+                    (fault ? ("  连续异常 " + std::to_string(n) + "/" + std::to_string(failLimit) +
+                              (failLimit > 0 && n >= failLimit ? "（已熔断，切换下一个上游）" : ""))
+                           : std::string()));
+
+            if (fault && failLimit == 0 && !retried) {
+                bool nextQuotaBlocked = false;
+                Route next = nextInGroup(*route.group, route.exposed, route.api->id, store,
+                                         nextQuotaBlocked);
+                if (next.ok) {
+                    retried = true;
+                    route = next;
+                    logLine("异常重试：改投 " + route.group->name + "/" + route.api->name);
+                    continue;
+                }
+            }
+
+            if (!out.started) {
+                jsonError(s, 502, out.error.empty() ? "上游服务不可用" : out.error, "upstream_error");
+            } else if (out.deferred) {
+                sendResponse(s, out.status > 0 ? out.status : 502,
+                             out.contentType.empty() ? "application/json" : out.contentType, out.body);
+            }
+            return;
+        }
+
+        store.recordApiSuccess(route.api->id);
+        if (out.deferred) {
+            sendResponse(s, out.status, out.contentType.empty() ? "application/json" : out.contentType,
+                         out.body);
+        }
         long long total = out.promptTokens + out.completionTokens;
         store.recordUsage(user.id, statModel, out.promptTokens, out.completionTokens);
         store.recordApiUsage(route.api->id, total);
         logLine(user.name + "  " + util::formatCount(out.promptTokens) + "+" +
                 util::formatCount(out.completionTokens) + " tokens  " + statModel +
-                "  via " + route.group->name + "/" + route.api->name);
-    } else {
-        logLine(user.name + "  " + requested + " -> 上游返回 " + std::to_string(out.status));
+                "  via " + via + (retried ? "（异常重试）" : "") +
+                (route.trippedFallback ? "（全组熔断，回落）" : ""));
+        return;
     }
 }
 
 void handleApi(SOCKET s, Store& store, const HttpRequest& req) {
     const std::string& p = req.path;
 
+    // 会话自检：未登录时不暴露自身存在（与其它管理接口同样按不存在处理）
     if (p == "/api/session") {
+        if (!adminOk(req)) {
+            notFound(s);
+            return;
+        }
         Config cfg = store.snapshot();
         json::Value root = json::Value::object();
-        root.set("ok", json::Value::boolean(adminOk(req)));
+        root.set("ok", json::Value::boolean(true));
         root.set("siteName", json::Value::str(cfg.settings.siteName));
         root.set("version", json::Value::str(RELAY_VERSION));
         sendResponse(s, 200, "application/json; charset=utf-8", root.dump(0));
@@ -563,11 +672,15 @@ void handleApi(SOCKET s, Store& store, const HttpRequest& req) {
 
     if (p == "/api/config" && req.method == "GET") {
         Config cfg = store.snapshot();
+        std::map<std::string, int> fails = store.apiFailMap();
         json::Value root = json::Value::object();
+        root.set("failLimit", json::Value::integer(cfg.settings.failLimit));
         json::Value st = json::Value::object();
         st.set("port", json::Value::integer(cfg.settings.port));
         st.set("siteName", json::Value::str(cfg.settings.siteName));
         st.set("panelPublic", json::Value::boolean(cfg.settings.panelPublic));
+        st.set("failLimit", json::Value::integer(cfg.settings.failLimit));
+        st.set("resetOffsetMinutes", json::Value::integer(cfg.settings.resetOffsetMinutes));
         st.set("passwordSet", json::Value::boolean(!cfg.settings.adminHash.empty()));
         root.set("settings", st);
         json::Value groups = json::Value::array();
@@ -578,6 +691,7 @@ void handleApi(SOCKET s, Store& store, const HttpRequest& req) {
             gj.set("name", json::Value::str(g.name));
             gj.set("prefix", json::Value::str(g.prefix));
             json::Value apis = json::Value::array();
+            std::string activeApi;
             for (std::size_t k = 0; k < g.apis.size(); ++k) {
                 const ApiEndpoint& a = g.apis[k];
                 json::Value aj = json::Value::object();
@@ -597,9 +711,17 @@ void handleApi(SOCKET s, Store& store, const HttpRequest& req) {
                 }
                 aj.set("alias", al);
                 aj.set("dailyLimitM", json::Value::number(a.dailyLimitM));
+                int n = fails.count(a.id) ? fails[a.id] : 0;
+                bool tripped = cfg.settings.failLimit > 0 && n >= cfg.settings.failLimit;
+                aj.set("fails", json::Value::integer(n));
+                aj.set("tripped", json::Value::boolean(tripped));
+                if (activeApi.empty() && !tripped) activeApi = a.id;
                 apis.push(aj);
             }
             gj.set("apis", apis);
+            // 当前在用的上游：组内第一个未熔断的 API；全熔断时回落第一个
+            if (activeApi.empty() && !g.apis.empty()) activeApi = g.apis[0].id;
+            gj.set("activeApi", json::Value::str(activeApi));
             groups.push(gj);
         }
         root.set("groups", groups);
@@ -614,6 +736,7 @@ void handleApi(SOCKET s, Store& store, const HttpRequest& req) {
             uj.set("unlimited", json::Value::boolean(u.unlimited));
             uj.set("enabled", json::Value::boolean(u.enabled));
             uj.set("quota", json::Value::integer(u.quota));
+            uj.set("dailyQuota", json::Value::integer(u.dailyQuota));
             uj.set("created", json::Value::integer(u.created));
             json::Value gs = json::Value::array();
             for (std::size_t k = 0; k < u.groupIds.size(); ++k) gs.push(json::Value::str(u.groupIds[k]));
@@ -667,6 +790,22 @@ void handleApi(SOCKET s, Store& store, const HttpRequest& req) {
         json::Value root = json::Value::object();
         root.set("logs", arr);
         sendResponse(s, 200, "application/json; charset=utf-8", root.dump(0));
+        return;
+    }
+
+    if (p == "/api/apifail/reset" && req.method == "POST") {
+        json::Value body;
+        std::string err;
+        std::string apiId;
+        if (json::Value::parse(req.body, body, &err) && body.isObject()) {
+            apiId = util::trim(body.get("apiId").asString());
+        }
+        store.resetApiFails(apiId);
+        store.save();
+        json::Value root = json::Value::object();
+        root.set("ok", json::Value::boolean(true));
+        sendResponse(s, 200, "application/json; charset=utf-8", root.dump(0));
+        logLine(apiId.empty() ? "已重置全部上游异常计数" : ("已重置上游异常计数 " + apiId));
         return;
     }
 

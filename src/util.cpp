@@ -330,6 +330,11 @@ std::string beijingDayKey(long long ts) {
     return std::string(buf);
 }
 
+// 每日重置日界 = 北京时间 0 点 + offsetMinutes（例如 240 表示凌晨 4 点重置）
+std::string shiftedDayKey(long long ts, int offsetMinutes) {
+    return beijingDayKey(ts + (long long)offsetMinutes * 60);
+}
+
 namespace {
 bool parseV4(const std::string& s, unsigned int& out) {
     unsigned int a = 0, b = 0, c = 0, d = 0;

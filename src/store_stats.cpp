@@ -59,6 +59,18 @@ bool Store::apply(const json::Value& in, std::string& err) {
         std::string sn = util::trim(st.get("siteName").asString());
         next.settings.siteName = sn.empty() ? std::string("AI Relay") : sn;
         if (st.has("panelPublic")) next.settings.panelPublic = st.get("panelPublic").asBool(true);
+        if (st.has("failLimit")) {
+            long long fl = st.get("failLimit").asInt(kDefaultFailLimit);
+            if (fl < 0) fl = 0;
+            if (fl > 99) fl = 99;
+            next.settings.failLimit = (int)fl;
+        }
+        if (st.has("resetOffsetMinutes")) {
+            long long off = st.get("resetOffsetMinutes").asInt(0);
+            if (off < -720) off = -720;
+            if (off > 720) off = 720;
+            next.settings.resetOffsetMinutes = (int)off;
+        }
         std::string nh = util::trim(st.get("adminPasswordHash").asString());
         if (!nh.empty()) {
             if (nh.size() != 64) {
@@ -186,6 +198,8 @@ bool Store::apply(const json::Value& in, std::string& err) {
         u.enabled = uj.get("enabled").asBool(true);
         u.quota = uj.get("quota").asInt(0);
         if (u.quota < 0) u.quota = 0;
+        u.dailyQuota = uj.get("dailyQuota").asInt(0);
+        if (u.dailyQuota < 0) u.dailyQuota = 0;
         u.created = uj.get("created").asInt(0);
         if (u.created <= 0) u.created = util::nowSeconds();
         const json::Value& gs = uj.get("groupIds");
@@ -219,6 +233,20 @@ bool Store::apply(const json::Value& in, std::string& err) {
             if (liveApis.find(apiId) == liveApis.end()) it = apiUsage_.erase(it);
             else ++it;
         }
+        // 删除 API 时同步删除其异常计数与失败统计
+        for (std::map<std::string, int>::iterator it = apiFails_.begin(); it != apiFails_.end();) {
+            if (liveApis.find(it->first) == liveApis.end()) it = apiFails_.erase(it);
+            else ++it;
+        }
+        for (std::map<std::string, long long>::iterator it = failStats_.begin(); it != failStats_.end();) {
+            std::size_t p1 = it->first.find('|');
+            std::size_t p2 = p1 == std::string::npos ? std::string::npos : it->first.find('|', p1 + 1);
+            std::string apiId = (p1 == std::string::npos || p2 == std::string::npos)
+                                    ? std::string()
+                                    : it->first.substr(p1 + 1, p2 - p1 - 1);
+            if (apiId.empty() || liveApis.find(apiId) == liveApis.end()) it = failStats_.erase(it);
+            else ++it;
+        }
         dirty_ = true;
     }
     return true;
@@ -227,8 +255,9 @@ bool Store::apply(const json::Value& in, std::string& err) {
 json::Value Store::stats() const {
     std::lock_guard<std::mutex> lock(mu_);
     long long now = util::nowSeconds();
-    std::string today = util::dateKey(now);
+    std::string today = dayKeyLocked();
     long long todayNum = dayNumberFromKey(today);
+    int dayOffset = cfg_.settings.resetOffsetMinutes;
 
     struct Agg {
         long long today = 0;
@@ -315,6 +344,13 @@ json::Value Store::stats() const {
         uj.set("enabled", json::Value::boolean(u.enabled));
         uj.set("unlimited", json::Value::boolean(u.unlimited));
         uj.set("quota", json::Value::integer(u.quota));
+        uj.set("dailyQuota", json::Value::integer(u.dailyQuota));
+        std::string state;
+        if (!u.enabled) state = "disabled";
+        else if (!u.unlimited && a.total >= u.quota) state = "total";
+        else if (u.dailyQuota > 0 && a.today >= u.dailyQuota) state = "daily";
+        else state = "ok";
+        uj.set("quotaState", json::Value::str(state));
         uj.set("used", json::Value::integer(a.total));
         uj.set("total", json::Value::integer(a.total));
         uj.set("today", json::Value::integer(a.today));
@@ -454,7 +490,7 @@ json::Value Store::stats() const {
     const int kDays = 14;
     std::vector<std::string> dayLabels((std::size_t)kDays);
     for (int i = 0; i < kDays; ++i) {
-        dayLabels[(std::size_t)(kDays - 1 - i)] = util::dateKey(now - (long long)i * 86400);
+        dayLabels[(std::size_t)(kDays - 1 - i)] = util::shiftedDayKey(now - (long long)i * 86400, dayOffset);
     }
     std::vector<long long> dayTotal((std::size_t)kDays, 0);
     std::map<std::string, std::vector<long long>> userSeries;
@@ -511,6 +547,105 @@ json::Value Store::stats() const {
     }
     daily.set("users", uarr);
     out.set("daily", daily);
+
+    /* ---- 上游 / 模型 失败次数 ---- */
+    struct FailAgg {
+        long long total = 0;
+        std::map<std::string, long long> apis;
+        std::map<std::string, long long> models;
+    };
+    FailAgg fDay, fWeek, fAll;
+    for (std::map<std::string, long long>::const_iterator it = failStats_.begin();
+         it != failStats_.end(); ++it) {
+        std::size_t p1 = it->first.find('|');
+        if (p1 == std::string::npos) continue;
+        std::size_t p2 = it->first.find('|', p1 + 1);
+        if (p2 == std::string::npos) continue;
+        std::string day = it->first.substr(0, p1);
+        std::string apiId = it->first.substr(p1 + 1, p2 - p1 - 1);
+        std::string model = it->first.substr(p2 + 1);
+        long long n = it->second;
+        if (n <= 0) continue;
+        long long diff = todayNum - dayNumberFromKey(day);
+        bool inDay = (diff == 0);
+        bool inWeek = (diff >= 0 && diff < 7);
+        fAll.total += n;
+        fAll.apis[apiId] += n;
+        fAll.models[model] += n;
+        if (inWeek) {
+            fWeek.total += n;
+            fWeek.apis[apiId] += n;
+            fWeek.models[model] += n;
+        }
+        if (inDay) {
+            fDay.total += n;
+            fDay.apis[apiId] += n;
+            fDay.models[model] += n;
+        }
+    }
+
+    json::Value failures = json::Value::object();
+    failures.set("threshold", json::Value::integer(cfg_.settings.failLimit));
+    failures.set("offsetMinutes", json::Value::integer(dayOffset));
+    const FailAgg* farr[3] = { &fDay, &fWeek, &fAll };
+    for (int ri = 0; ri < 3; ++ri) {
+        const FailAgg& fa = *farr[ri];
+        json::Value ro = json::Value::object();
+        ro.set("total", json::Value::integer(fa.total));
+
+        std::vector<std::pair<long long, std::string>> order;
+        for (std::map<std::string, long long>::const_iterator it = fa.apis.begin();
+             it != fa.apis.end(); ++it) {
+            order.push_back(std::make_pair(it->second, it->first));
+        }
+        std::stable_sort(order.begin(), order.end(),
+                         [](const std::pair<long long, std::string>& a,
+                            const std::pair<long long, std::string>& b) { return a.first > b.first; });
+        json::Value aarr = json::Value::array();
+        for (std::size_t k = 0; k < order.size(); ++k) {
+            std::string name, group;
+            for (std::size_t gi = 0; gi < cfg_.groups.size() && name.empty(); ++gi) {
+                for (std::size_t ai = 0; ai < cfg_.groups[gi].apis.size(); ++ai) {
+                    if (cfg_.groups[gi].apis[ai].id == order[k].second) {
+                        name = cfg_.groups[gi].apis[ai].name;
+                        group = cfg_.groups[gi].name;
+                        break;
+                    }
+                }
+            }
+            if (name.empty()) continue;   // API 已删除
+            json::Value aj = json::Value::object();
+            aj.set("id", json::Value::str(order[k].second));
+            aj.set("name", json::Value::str(name));
+            aj.set("group", json::Value::str(group));
+            aj.set("count", json::Value::integer(order[k].first));
+            double share = fa.total > 0 ? (double)order[k].first * 100.0 / (double)fa.total : 0.0;
+            aj.set("share", json::Value::number(share));
+            aarr.push(aj);
+        }
+        ro.set("apis", aarr);
+
+        std::vector<std::pair<long long, std::string>> morder;
+        for (std::map<std::string, long long>::const_iterator it = fa.models.begin();
+             it != fa.models.end(); ++it) {
+            morder.push_back(std::make_pair(it->second, it->first));
+        }
+        std::stable_sort(morder.begin(), morder.end(),
+                         [](const std::pair<long long, std::string>& a,
+                            const std::pair<long long, std::string>& b) { return a.first > b.first; });
+        json::Value marr = json::Value::array();
+        for (std::size_t k = 0; k < morder.size(); ++k) {
+            json::Value mj = json::Value::object();
+            mj.set("model", json::Value::str(morder[k].second));
+            mj.set("count", json::Value::integer(morder[k].first));
+            double share = fa.total > 0 ? (double)morder[k].first * 100.0 / (double)fa.total : 0.0;
+            mj.set("share", json::Value::number(share));
+            marr.push(mj);
+        }
+        ro.set("models", marr);
+        failures.set(rangeNames[ri], ro);
+    }
+    out.set("failures", failures);
 
     return out;
 }

@@ -47,6 +47,7 @@ json::Value toJson(const User& u) {
     o.set("unlimited", json::Value::boolean(u.unlimited));
     o.set("enabled", json::Value::boolean(u.enabled));
     o.set("quota", json::Value::integer(u.quota));
+    o.set("dailyQuota", json::Value::integer(u.dailyQuota));
     json::Value gs = json::Value::array();
     for (std::size_t i = 0; i < u.groupIds.size(); ++i) gs.push(json::Value::str(u.groupIds[i]));
     o.set("groupIds", gs);
@@ -96,6 +97,7 @@ User userFromJson(const json::Value& o) {
     u.unlimited = o.get("unlimited").asBool(false);
     u.enabled = o.get("enabled").asBool(true);
     u.quota = o.get("quota").asInt(0);
+    u.dailyQuota = o.get("dailyQuota").asInt(0);
     const json::Value& gs = o.get("groupIds");
     for (std::size_t i = 0; i < gs.size(); ++i) u.groupIds.push_back(gs.at(i).asString());
     u.created = o.get("created").asInt(0);
@@ -144,6 +146,14 @@ bool Store::load(const std::string& path) {
             std::string v = util::trim(bl.at(i).asString());
             if (!v.empty()) cfg_.settings.ipBlacklist.push_back(v);
         }
+        int fl = (int)st.get("failLimit").asInt(kDefaultFailLimit);
+        if (fl < 0) fl = 0;
+        if (fl > 99) fl = 99;
+        cfg_.settings.failLimit = fl;
+        int off = (int)st.get("resetOffsetMinutes").asInt(0);
+        if (off < -720) off = -720;
+        if (off > 720) off = 720;
+        cfg_.settings.resetOffsetMinutes = off;
         std::string legacy = st.get("adminPassword").asString();
         if (cfg_.settings.adminSalt.empty() || cfg_.settings.adminHash.empty()) {
             if (cfg_.settings.adminSalt.empty()) cfg_.settings.adminSalt = util::randomHex(16);
@@ -187,6 +197,31 @@ bool Store::load(const std::string& path) {
         long long tokens = b.get("tokens").asInt(0);
         if (!apiId.empty() && !day.empty()) apiUsage_[apiId + "|" + day] = tokens;
     }
+    apiFails_.clear();
+    apiFailDay_ = util::trim(root.get("apiFailDay").asString());
+    const json::Value& apiFails = root.get("apiFails");
+    for (std::size_t i = 0; i < apiFails.size(); ++i) {
+        const json::Value& b = apiFails.at(i);
+        std::string apiId = b.get("apiId").asString();
+        long long n = b.get("n").asInt(0);
+        if (!apiId.empty() && n > 0) apiFails_[apiId] = (int)n;
+    }
+    std::string today = dayKeyLocked();
+    if (!apiFailDay_.empty() && apiFailDay_ != today) {
+        apiFailDay_ = today;
+        if (!apiFails_.empty()) apiFails_.clear();
+        dirty_ = true;
+    }
+    failStats_.clear();
+    const json::Value& failStats = root.get("failStats");
+    for (std::size_t i = 0; i < failStats.size(); ++i) {
+        const json::Value& b = failStats.at(i);
+        std::string day = b.get("day").asString();
+        std::string apiId = b.get("apiId").asString();
+        std::string model = b.get("model").asString();
+        long long n = b.get("count").asInt(0);
+        if (!day.empty() && !apiId.empty() && n > 0) failStats_[day + "|" + apiId + "|" + model] = n;
+    }
     return true;
 }
 
@@ -196,12 +231,19 @@ bool Store::save() {
     Config cfg;
     std::map<std::string, UsageBucket> usage;
     std::map<std::string, long long> apiUsage;
+    std::map<std::string, int> apiFails;
+    std::map<std::string, long long> failStats;
+    std::string apiFailDay;
     std::string path;
     {
         std::lock_guard<std::mutex> lock(mu_);
+        rollFailDayLocked();
         cfg = cfg_;
         usage = usage_;
         apiUsage = apiUsage_;
+        apiFails = apiFails_;
+        failStats = failStats_;
+        apiFailDay = apiFailDay_;
         path = path_;
         dirty_ = false;
     }
@@ -222,6 +264,8 @@ bool Store::save() {
         bl.push(json::Value::str(cfg.settings.ipBlacklist[i]));
     }
     st.set("ipBlacklist", bl);
+    st.set("failLimit", json::Value::integer(cfg.settings.failLimit));
+    st.set("resetOffsetMinutes", json::Value::integer(cfg.settings.resetOffsetMinutes));
     root.set("settings", st);
     json::Value groups = json::Value::array();
     for (std::size_t i = 0; i < cfg.groups.size(); ++i) groups.push(toJson(cfg.groups[i]));
@@ -252,6 +296,31 @@ bool Store::save() {
         aa.push(b);
     }
     root.set("apiUsage", aa);
+    root.set("apiFailDay", json::Value::str(apiFailDay));
+    json::Value af = json::Value::array();
+    for (std::map<std::string, int>::const_iterator it = apiFails.begin(); it != apiFails.end(); ++it) {
+        if (it->second <= 0) continue;
+        json::Value b = json::Value::object();
+        b.set("apiId", json::Value::str(it->first));
+        b.set("n", json::Value::integer(it->second));
+        af.push(b);
+    }
+    root.set("apiFails", af);
+    json::Value fst = json::Value::array();
+    for (std::map<std::string, long long>::const_iterator it = failStats.begin(); it != failStats.end(); ++it) {
+        if (it->second <= 0) continue;
+        std::size_t p1 = it->first.find('|');
+        if (p1 == std::string::npos) continue;
+        std::size_t p2 = it->first.find('|', p1 + 1);
+        if (p2 == std::string::npos) continue;
+        json::Value b = json::Value::object();
+        b.set("day", json::Value::str(it->first.substr(0, p1)));
+        b.set("apiId", json::Value::str(it->first.substr(p1 + 1, p2 - p1 - 1)));
+        b.set("model", json::Value::str(it->first.substr(p2 + 1)));
+        b.set("count", json::Value::integer(it->second));
+        fst.push(b);
+    }
+    root.set("failStats", fst);
     std::string text = root.dump(2);
     bool ok = util::writeFile(path, text);
     if (ok) {
@@ -319,9 +388,9 @@ long long Store::usedTokens(const std::string& userId) const {
 void Store::recordUsage(const std::string& userId, const std::string& model,
                         long long prompt, long long completion) {
     if (userId.empty()) return;
-    std::string day = util::dateKeyToday();
     std::string m = model.empty() ? "unknown" : model;
     std::lock_guard<std::mutex> lock(mu_);
+    std::string day = dayKeyLocked();
     UsageBucket& b = usage_[userId + "|" + day + "|" + m];
     b.userId = userId;
     b.day = day;
@@ -334,17 +403,100 @@ void Store::recordUsage(const std::string& userId, const std::string& model,
 
 void Store::recordApiUsage(const std::string& apiId, long long tokens) {
     if (apiId.empty() || tokens <= 0) return;
-    std::string key = apiId + "|" + util::beijingDayKey(util::nowSeconds());
     std::lock_guard<std::mutex> lock(mu_);
-    apiUsage_[key] += tokens;
+    apiUsage_[apiId + "|" + dayKeyLocked()] += tokens;
     dirty_ = true;
 }
 
 long long Store::apiUsedToday(const std::string& apiId) const {
-    std::string key = apiId + "|" + util::beijingDayKey(util::nowSeconds());
     std::lock_guard<std::mutex> lock(mu_);
-    std::map<std::string, long long>::const_iterator it = apiUsage_.find(key);
+    std::map<std::string, long long>::const_iterator it = apiUsage_.find(apiId + "|" + dayKeyLocked());
     return it == apiUsage_.end() ? 0 : it->second;
+}
+
+std::string Store::dayKeyLocked() const {
+    return util::shiftedDayKey(util::nowSeconds(), cfg_.settings.resetOffsetMinutes);
+}
+
+std::string Store::dayKeyNow() const {
+    std::lock_guard<std::mutex> lock(mu_);
+    return dayKeyLocked();
+}
+
+long long Store::userUsedToday(const std::string& userId) const {
+    if (userId.empty()) return 0;
+    std::lock_guard<std::mutex> lock(mu_);
+    std::string day = dayKeyLocked();
+    long long total = 0;
+    for (std::map<std::string, UsageBucket>::const_iterator it = usage_.begin(); it != usage_.end(); ++it) {
+        if (it->second.userId == userId && it->second.day == day) {
+            total += it->second.prompt + it->second.completion;
+        }
+    }
+    return total;
+}
+
+void Store::rollFailDayLocked() {
+    std::string today = dayKeyLocked();
+    if (apiFailDay_.empty()) {
+        apiFailDay_ = today;
+        return;
+    }
+    if (apiFailDay_ == today) return;
+    apiFailDay_ = today;
+    if (!apiFails_.empty()) {
+        apiFails_.clear();
+        dirty_ = true;
+    }
+}
+
+std::map<std::string, int> Store::apiFailMap() {
+    std::lock_guard<std::mutex> lock(mu_);
+    rollFailDayLocked();
+    return apiFails_;
+}
+
+int Store::apiFailCount(const std::string& apiId) {
+    if (apiId.empty()) return 0;
+    std::lock_guard<std::mutex> lock(mu_);
+    rollFailDayLocked();
+    std::map<std::string, int>::const_iterator it = apiFails_.find(apiId);
+    return it == apiFails_.end() ? 0 : it->second;
+}
+
+int Store::recordApiFailure(const std::string& apiId, const std::string& model) {
+    if (apiId.empty()) return 0;
+    std::lock_guard<std::mutex> lock(mu_);
+    rollFailDayLocked();
+    int& n = apiFails_[apiId];
+    if (n < 999) n++;
+    if (!model.empty()) failStats_[dayKeyLocked() + "|" + apiId + "|" + model] += 1;
+    dirty_ = true;
+    return n;
+}
+
+void Store::recordApiSuccess(const std::string& apiId) {
+    if (apiId.empty()) return;
+    std::lock_guard<std::mutex> lock(mu_);
+    rollFailDayLocked();
+    std::map<std::string, int>::iterator it = apiFails_.find(apiId);
+    if (it == apiFails_.end()) return;
+    apiFails_.erase(it);
+    dirty_ = true;
+}
+
+void Store::resetApiFails(const std::string& apiId) {
+    std::lock_guard<std::mutex> lock(mu_);
+    rollFailDayLocked();
+    if (apiId.empty()) {
+        if (apiFails_.empty()) return;
+        apiFails_.clear();
+    } else {
+        std::map<std::string, int>::iterator it = apiFails_.find(apiId);
+        if (it == apiFails_.end()) return;
+        apiFails_.erase(it);
+    }
+    dirty_ = true;
 }
 
 
