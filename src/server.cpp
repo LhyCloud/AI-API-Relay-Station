@@ -29,6 +29,32 @@ long long g_loginPenalty = 0;   // 累计惩罚秒数
 bool g_loginLocked = false;     // 超过 1 小时，锁定到下次启动
 std::map<std::string, long long> g_nonces;  // nonce -> 过期时间
 
+// 从查询串里取一个整数参数（"/api/config?days=30&offset=14"）
+static int queryInt(const std::string& q, const std::string& key, int def) {
+    std::size_t pos = 0;
+    while (pos < q.size()) {
+        std::size_t amp = q.find('&', pos);
+        std::string kv = q.substr(pos, amp == std::string::npos ? std::string::npos : amp - pos);
+        std::size_t eq = kv.find('=');
+        if (eq != std::string::npos && kv.substr(0, eq) == key) {
+            std::string val = kv.substr(eq + 1);
+            int out = def;
+            for (std::size_t i = 0; i < val.size(); ++i) {
+                if (val[i] < '0' || val[i] > '9') return def;
+            }
+            if (!val.empty()) {
+                long long n = 0;
+                for (std::size_t i = 0; i < val.size(); ++i) n = n * 10 + (val[i] - '0');
+                out = (int)n;
+            }
+            return out;
+        }
+        if (amp == std::string::npos) break;
+        pos = amp + 1;
+    }
+    return def;
+}
+
 std::string notFoundBody() { return "Not Found"; }
 
 void notFound(SOCKET s) {
@@ -744,7 +770,8 @@ void handleApi(SOCKET s, Store& store, const HttpRequest& req) {
             users.push(uj);
         }
         root.set("users", users);
-        root.set("usage", store.stats());
+        root.set("usage", store.stats(queryInt(req.query, "days", 14),
+                                      queryInt(req.query, "offset", 0)));
         sendResponse(s, 200, "application/json; charset=utf-8", root.dump(2));
         return;
     }
@@ -779,7 +806,35 @@ void handleApi(SOCKET s, Store& store, const HttpRequest& req) {
     }
 
     if (p == "/api/stats" && req.method == "GET") {
-        sendResponse(s, 200, "application/json; charset=utf-8", store.stats().dump(2));
+        sendResponse(s, 200, "application/json; charset=utf-8",
+                     store.stats(queryInt(req.query, "days", 14),
+                                 queryInt(req.query, "offset", 0)).dump(2));
+        return;
+    }
+
+    if (p == "/api/update/check" && req.method == "POST") {
+        json::Value root = updateCheck();
+        sendResponse(s, 200, "application/json; charset=utf-8", root.dump(0));
+        return;
+    }
+
+    if (p == "/api/update/apply" && req.method == "POST") {
+        std::string uerr, note;
+        if (!updateApply(uerr, note)) {
+            jsonError(s, 400, uerr, "invalid_request_error");
+            return;
+        }
+        json::Value root = json::Value::object();
+        root.set("ok", json::Value::boolean(true));
+        root.set("restarting", json::Value::boolean(true));
+        root.set("message", json::Value::str(note));
+        sendResponse(s, 200, "application/json; charset=utf-8", root.dump(0));
+        logLine(note);
+        // 给响应留出时间，再让本进程退出，新进程接管端口
+        std::thread([]() {
+            Sleep(600);
+            serverRequestStop();
+        }).detach();
         return;
     }
 
@@ -961,6 +1016,8 @@ void logLine(const std::string& msg) {
 }
 
 void serverRequestRebind() { g_rebind.store(true); }
+
+void serverRequestStop() { g_stop.store(true); }
 
 void serverStop() { g_stop.store(true); }
 

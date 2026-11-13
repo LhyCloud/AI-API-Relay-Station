@@ -20,7 +20,7 @@
 #include <cstdint>
 #include <utility>
 
-#define RELAY_VERSION "1.0.0"
+#define RELAY_VERSION "0.0.1"
 
 /* ------------------------------------------------------------------ */
 /* json                                                               */
@@ -123,6 +123,10 @@ bool isLoopbackIp(const std::string& ip);
 
 } // namespace util
 
+/* 自更新（GitHub Release） */
+json::Value updateCheck();
+bool updateApply(std::string& err, std::string& note);
+
 /* ------------------------------------------------------------------ */
 /* config model                                                       */
 /* ------------------------------------------------------------------ */
@@ -196,7 +200,7 @@ public:
 
     Config snapshot() const;
     bool apply(const json::Value& in, std::string& err);
-    json::Value stats() const;
+    json::Value stats(int days = 14, int offsetDays = 0) const;
 
     void recordUsage(const std::string& userId, const std::string& model,
                      long long prompt, long long completion);
@@ -263,6 +267,7 @@ bool readRequest(SOCKET s, HttpRequest& req, std::string& err);
 
 void serverRun(Store& store);
 void serverRequestRebind();
+void serverRequestStop();
 void serverStop();
 
 struct RelayOutcome {

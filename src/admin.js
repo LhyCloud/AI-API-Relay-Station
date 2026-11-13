@@ -1,5 +1,27 @@
 
 var CFG=null, LOGS=[], TAB='overview', MODAL=null, BUSY=false, VER='', RANGE='day';
+var TREND_DAYS=14, TREND_OFF=0, TREND_BUSY=false;   // 趋势窗口：7/14/30 天，可向前翻页
+var THEME=(function(){ try{ return localStorage.getItem('relay.theme')==='dark'?'dark':'light'; }catch(e){ return 'light'; } })();
+
+function applyTheme(){
+  var el=document.documentElement;
+  if(!el) return;
+  if(THEME==='dark') el.classList.add('theme-dark'); else el.classList.remove('theme-dark');
+}
+function setTheme(t){
+  THEME=(t==='dark')?'dark':'light';
+  try{ localStorage.setItem('relay.theme',THEME); }catch(e){}
+  applyTheme();
+  if(CFG) render();
+}
+function themeLabel(){ return THEME==='dark'?'暗色':'亮色'; }
+function accentHex(){ return THEME==='dark'?'#58a6ff':'#0969da'; }
+function chartInk(){
+  return THEME==='dark'
+    ? {grid:'#30363d',text:'#8b949e',dot:'#161b22'}
+    : {grid:'#eaeef2',text:'#656d76',dot:'#fff'};
+}
+applyTheme();
 var RANGE_LABEL={day:'今日',week:'本周',all:'总计'};
 var HIDDEN={};
 var CHART_COLORS=['#0969da','#1a7f37','#cf222e','#8250df','#bf3989','#9a6700','#1b7c83','#6e7781',
@@ -69,17 +91,18 @@ function svgLineChart(labels,series,opts){
   var top=niceMax(max);
   function X(i){ return PL+(n<=1?iw/2:iw*i/(n-1)); }
   function Y(v){ return PT+ih-ih*(v/top); }
+  var ink=chartInk();
   var svg='<svg viewBox="0 0 '+W+' '+H+'" class="chart">';
   for(var g=0;g<=4;g++){
     var gy=PT+ih*g/4;
     svg+='<line x1="'+PL+'" y1="'+gy.toFixed(1)+'" x2="'+(W-PR)+'" y2="'+gy.toFixed(1)+
       '" stroke="#eaeef2" stroke-width="1"/>';
-    svg+='<text x="'+(PL-8)+'" y="'+(gy+4).toFixed(1)+'" text-anchor="end" font-size="11" fill="#656d76">'+
+    svg+='<text x="'+(PL-8)+'" y="'+(gy+4).toFixed(1)+'" text-anchor="end" font-size="11" fill="'+ink.text+'">'+
       fmtBig(top*(4-g)/4)+'</text>';
   }
   for(var i=0;i<n;i++){
     if(n>8&&i%2!==0&&i!==n-1) continue;
-    svg+='<text x="'+X(i).toFixed(1)+'" y="'+(H-8)+'" text-anchor="middle" font-size="11" fill="#656d76">'+
+    svg+='<text x="'+X(i).toFixed(1)+'" y="'+(H-8)+'" text-anchor="middle" font-size="11" fill="'+ink.text+'">'+
       esc(String(labels[i]||'').substring(5))+'</text>';
   }
   series.forEach(function(s,si){
@@ -92,7 +115,7 @@ function svgLineChart(labels,series,opts){
       var v=(s.values&&s.values[k])||0;
       var x=X(k).toFixed(1), y=Y(v).toFixed(1);
       d+=(k?'L':'M')+x+' '+y;
-      dots+='<circle cx="'+x+'" cy="'+y+'" r="3.2" fill="#fff" stroke="'+s.color+
+      dots+='<circle cx="'+x+'" cy="'+y+'" r="3.2" fill="'+ink.dot+'" stroke="'+s.color+
         '" stroke-width="2"><title>'+esc(s.name+' · '+(labels[k]||'')+' · '+fmt(v)+' tokens')+
         '</title></circle>';
       if(v>0){
@@ -143,7 +166,7 @@ function api(path,method,body){
 /* ---------------- data ---------------- */
 
 function loadAll(){
-  return api('/api/config').then(function(r){
+  return api('/api/config?days='+TREND_DAYS+'&offset='+TREND_OFF).then(function(r){
     if(r.status===404||r.status===401||!r.data||!r.data.settings){ location.replace('/'); return; }
     CFG=r.data;
     return api('/api/logs').then(function(l){ LOGS=(l.data&&l.data.logs)||[]; });
@@ -164,10 +187,52 @@ function ensureSecurity(){
   });
 }
 
-function secReload(){
-  SEC=null;
-  ensureSecurity();
+function loadUsage(){
+  return api('/api/config?days='+TREND_DAYS+'&offset='+TREND_OFF).then(function(r){
+    if(r.status===200&&r.data&&r.data.usage) CFG.usage=r.data.usage;
+  });
+}
+
+function setTrend(days,off){
+  if(TREND_BUSY) return;
+  TREND_BUSY=true;
+  TREND_DAYS=days;
+  TREND_OFF=Math.max(0,off||0);
   render();
+  loadUsage().then(function(){ TREND_BUSY=false; render(); },
+                   function(){ TREND_BUSY=false; render(); });
+}
+
+function trendCtl(){
+  var seg=[7,14,30].map(function(d){
+    return '<button class="segbtn'+(TREND_DAYS===d?' on':'')+'" data-trend="'+d+'">'+d+' 天</button>';
+  }).join('');
+  return '<div class="seg">'+seg+'</div>'+
+    '<button class="btn sm" data-trend-shift="1"'+(TREND_BUSY?' disabled':'')+'>‹ 更早</button>'+
+    '<button class="btn sm" data-trend-shift="-1"'+(TREND_OFF===0||TREND_BUSY?' disabled':'')+
+    '>更新 ›</button>';
+}
+
+function trendLabel(daily){
+  var d=(daily&&daily.days)||[];
+  if(!d.length) return '近 '+TREND_DAYS+' 天';
+  if(TREND_OFF===0) return '近 '+d.length+' 天';
+  return d[0]+' ~ '+d[d.length-1];
+}
+
+function secReload(btn){
+  if(btn){ btn.disabled=true; btn.innerHTML='刷新中…'; }
+  SEC=null;
+  SEC_LOADING=true;
+  api('/api/security').then(function(r){
+    SEC_LOADING=false;
+    if(r.status===200&&r.data) SEC=r.data;
+    render();
+  });
+}
+
+function markSvg(){
+  return "<svg viewBox='0 0 32 32' width='13' height='13' fill='none' stroke='currentColor' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M7 12h15m0 0-4-4m4 4-4 4'/><path d='M25 20H10m0 0 4 4m-4-4 4-4'/></svg>";
 }
 
 function render(){
@@ -185,10 +250,12 @@ function render(){
 
   document.getElementById('app').innerHTML=
    '<div class="topbar">'+
-     '<div class="brand"><span class="mark">R</span><span>'+esc(CFG.settings.siteName||'AI Relay')+'</span>'+
+     '<div class="brand"><span class="mark">'+markSvg()+'</span><span>'+esc(CFG.settings.siteName||'AI Relay')+'</span>'+
      '<span class="ver">v'+esc(VER)+'</span></div>'+
      '<div class="sp"></div>'+
      '<div class="stat"><span class="dot"></span>运行中 · 端口 '+CFG.settings.port+'</div>'+
+     '<button class="themebtn" id="themeBtn" data-theme-toggle="1" '+
+       'title="切换明暗主题">'+(THEME==='dark'?'亮色':'暗色')+'</button>'+
      '<button id="logout">退出</button>'+
    '</div>'+
    '<div class="tabs">'+tabs+'</div>'+
@@ -224,7 +291,7 @@ function viewOverview(){
     rows+='<tr><td>'+esc(x.name)+'</td>'+
       '<td class="num">'+numCell(x.tokens)+'</td>'+
       '<td><div style="display:flex;align-items:center;gap:8px"><div class="bar" style="flex:1"><i style="width:'+
-        Math.min(100,x.share)+'%"></i></div><span class="mono" style="color:#656d76;width:48px;text-align:right">'+
+        Math.min(100,x.share)+'%"></i></div><span class="mono" style="color:var(--muted);width:48px;text-align:right">'+
         pct(x.share)+'</span></div></td></tr>';
   }
 
@@ -245,7 +312,7 @@ function viewOverview(){
   var port=CFG.settings.port;
   return '<div class="pagehead"><div><h2>概览</h2>'+
     '<div class="sub">'+esc(u.time||'')+' · OpenAI 兼容中转服务</div></div><div class="sp"></div>'+
-    '<button class="btn" onclick="refreshAll()">刷新</button></div>'+
+    '<button class="btn" onclick="refreshAll(this)">刷新</button></div>'+
    '<div class="grid">'+
      metric('用户数',fmt(users),(CFG.users||[]).filter(function(x){return x.enabled;}).length+' 个启用')+
      metric('AI 分组',fmt(groups),countApis()+' 个上游接口')+
@@ -479,6 +546,9 @@ document.addEventListener('click',function(e){
     if(el.getAttribute&&el.getAttribute('data-copy')!==null){
       copyText(el.getAttribute('data-copy'));return;
     }
+    if(el.getAttribute&&el.getAttribute('data-theme-toggle')!==null){
+      setTheme(THEME==='dark'?'light':'dark');return;
+    }
     el=el.parentNode;
   }
 });
@@ -498,10 +568,10 @@ function viewStats(){
     for(var k=0;k<ms.length;k++){
       mt+='<div style="display:flex;align-items:center;gap:8px;margin:2px 0">'+
         '<span class="mono" title="'+esc(ms[k].model)+'" style="font-size:12px;flex:0 0 150px;'+
-        'width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#656d76">'+
+        'width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)">'+
         esc(ms[k].model)+'</span>'+
         '<div class="bar g" style="flex:1"><i style="width:'+Math.min(100,ms[k].share)+'%"></i></div>'+
-        '<span class="mono" style="width:44px;text-align:right;color:#656d76">'+pct(ms[k].share)+'</span></div>';
+        '<span class="mono" style="width:44px;text-align:right;color:var(--muted)">'+pct(ms[k].share)+'</span></div>';
     }
     if(!mt) mt='<span class="hint">-</span>';
     rows+='<tr><td>'+esc(x.name)+'</td>'+
@@ -517,7 +587,7 @@ function viewStats(){
     mrows+='<tr><td class="mono">'+esc(models[q].model)+'</td>'+
       '<td class="num">'+numCell(models[q].tokens)+'</td>'+
       '<td><div style="display:flex;align-items:center;gap:8px"><div class="bar" style="flex:1"><i style="width:'+
-      Math.min(100,models[q].share)+'%"></i></div><span class="mono" style="color:#656d76;width:48px;text-align:right">'+
+      Math.min(100,models[q].share)+'%"></i></div><span class="mono" style="color:var(--muted);width:48px;text-align:right">'+
       pct(models[q].share)+'</span></div></td></tr>';
   }
   if(!mrows) mrows='<tr><td colspan="3"><div class="empty">暂无统计数据</div></td></tr>';
@@ -528,7 +598,7 @@ function viewStats(){
   (daily.total||[]).forEach(function(v){ totalSum+=v; });
   var totalChart='<div class="empty">暂无用量数据</div>';
   if(labels.length&&totalSum>0){
-    totalChart=svgLineChart(labels,[{name:'全体',color:'#0969da',values:daily.total}],{area:true});
+    totalChart=svgLineChart(labels,[{name:'全体',color:accentHex(),values:daily.total}],{area:true});
   }
   var usersAll=(daily.users||[]).slice(0,12);
   var series=usersAll.map(function(x,i){
@@ -541,38 +611,60 @@ function viewStats(){
       (shown.length?svgLineChart(labels,shown,{}):'<div class="empty">已全部隐藏，点击图例恢复</div>');
   }
 
+  if(TREND_BUSY){ totalChart='<div class="empty">载入中…</div>'; userChart='<div class="empty">载入中…</div>'; }
+
   var fail=(CFG.usage&&CFG.usage.failures)||{};
   var fr=fail[RANGE]||{total:0,apis:[],models:[]};
   var fth=(fail.threshold!==undefined)?fail.threshold:(CFG.failLimit||0);
   var fnote=(fth>0)?('阈值 '+fth+' 次'):'阈值 0（不熔断，异常立即重试）';
-  var gapis='';
-  var fapis=(fr.apis||[]).slice().sort(function(a,b){return b.count-a.count;});
-  for(var fi=0;fi<fapis.length;fi++){
-    var fa=fapis[fi];
-    gapis+='<tr><td>'+esc(fa.group)+' / '+esc(fa.name)+'</td>'+
-      '<td class="num">'+fmt(fa.count)+'</td>'+
-      '<td style="min-width:160px"><div style="display:flex;align-items:center;gap:8px">'+
-      '<div class="bar" style="flex:1"><i style="width:'+Math.min(100,fa.share)+'%"></i></div>'+
-      '<span class="mono" style="color:#656d76;width:48px;text-align:right">'+pct(fa.share)+'</span></div></td></tr>';
+  // 模型请求次数 = 成功（用量记录）+ 失败（异常记录），合成一条进度条
+  var mmap={};
+  var mlist=(rd.models||[]);
+  for(var mi=0;mi<mlist.length;mi++){
+    var mo=mlist[mi];
+    if(!mmap[mo.model]) mmap[mo.model]={model:mo.model,ok:0,bad:0};
+    mmap[mo.model].ok+=mo.requests||0;
   }
-  if(!gapis) gapis='<tr><td colspan="3"><div class="empty">暂无上游失败记录</div></td></tr>';
-  var fmodels='';
-  var fms=(fr.models||[]).slice().sort(function(a,b){return b.count-a.count;});
-  for(var fm=0;fm<fms.length;fm++){
-    fmodels+='<tr><td class="mono">'+esc(fms[fm].model)+'</td>'+
-      '<td class="num">'+fmt(fms[fm].count)+'</td>'+
-      '<td style="min-width:160px"><div style="display:flex;align-items:center;gap:8px">'+
-      '<div class="bar" style="flex:1"><i style="width:'+Math.min(100,fms[fm].share)+'%"></i></div>'+
-      '<span class="mono" style="color:#656d76;width:48px;text-align:right">'+pct(fms[fm].share)+'</span></div></td></tr>';
+  var fms=(fr.models||[]);
+  for(var fi=0;fi<fms.length;fi++){
+    var fmx=fms[fi];
+    if(!mmap[fmx.model]) mmap[fmx.model]={model:fmx.model,ok:0,bad:0};
+    mmap[fmx.model].bad+=fmx.count||0;
   }
-  if(!fmodels) fmodels='<tr><td colspan="3"><div class="empty">暂无模型失败记录</div></td></tr>';
+  var mrows2=[];
+  for(var key in mmap){
+    if(!Object.prototype.hasOwnProperty.call(mmap,key)) continue;
+    var it=mmap[key];
+    it.total=it.ok+it.bad;
+    mrows2.push(it);
+  }
+  mrows2.sort(function(a,b){return b.total-a.total;});
+  var reqTotal=0;
+  for(var ri=0;ri<mrows2.length;ri++) reqTotal+=mrows2[ri].total;
+  var mut='';
+  for(var rj=0;rj<mrows2.length;rj++){
+    var rw=mrows2[rj];
+    var okPct=rw.total>0?(rw.ok*100/rw.total):0;
+    var badPct=rw.total>0?(rw.bad*100/rw.total):0;
+    var sharePct=reqTotal>0?(rw.total*100/reqTotal):0;
+    mut+='<tr><td class="mono">'+esc(rw.model)+'</td>'+
+      '<td class="num">'+fmt(rw.total)+'</td>'+
+      '<td class="num">'+pct(sharePct)+'</td>'+
+      '<td style="min-width:220px"><div style="display:flex;align-items:center;gap:8px">'+
+      '<div class="bar g" style="flex:1"><i style="width:'+okPct.toFixed(2)+'%"></i>'+
+      (badPct>0?'<b style="width:'+badPct.toFixed(2)+'%"></b>':'')+'</div>'+
+      '<span class="mono" style="flex:0 0 96px;text-align:right;color:var(--muted);'+
+      'white-space:nowrap;overflow:hidden">'+
+      fmt(rw.ok)+'/'+fmt(rw.total)+'</span></div></td></tr>';
+  }
+  if(!mut) mut='<tr><td colspan="4"><div class="empty">暂无请求记录</div></td></tr>';
 
   return '<div class="pagehead"><div><h2>统计</h2>'+
     '<div class="sub">'+esc(u.time||'')+' · '+RANGE_LABEL[RANGE]+'共 '+
     '<span title="'+fmt(rd.tokens)+'">'+fmtBig(rd.tokens)+'</span> tokens · '+
     fmt(rd.requests)+' 次请求 · 失败 '+fmt(fr.total||0)+' 次</div></div><div class="sp"></div>'+
     rangeTabs()+
-    '<button class="btn" onclick="refreshAll()">刷新</button></div>'+
+    '<button class="btn" onclick="refreshAll(this)">刷新</button></div>'+
    '<div class="card"><div class="card-h">各用户用量'+
      '<span class="label gray">'+RANGE_LABEL[RANGE]+'</span></div><div class="card-b tight">'+
      '<table><thead><tr><th>用户</th><th class="num">用量（tokens）</th>'+
@@ -582,25 +674,30 @@ function viewStats(){
      '<span class="label gray">'+RANGE_LABEL[RANGE]+'</span></div><div class="card-b tight">'+
      '<table><thead><tr><th>模型</th><th class="num">用量（tokens）</th><th>占比</th></tr></thead>'+
      '<tbody>'+mrows+'</tbody></table></div></div>'+
-   '<div class="card"><div class="card-h">上游失败次数'+
+   '<div class="card"><div class="card-h">模型请求次数'+
      '<span class="label gray">'+RANGE_LABEL[RANGE]+'</span>'+
-     '<span class="label '+(fth>0?'gray':'blue')+'">'+esc(fnote)+'</span>'+
-     '<div class="sp"></div><span class="hint" style="margin:0">共 '+fmt(fr.total||0)+' 次</span></div>'+
-     '<div class="card-b tight"><table><thead><tr><th>上游（分组 / 名称）</th>'+
-     '<th class="num">失败次数</th><th>占比</th></tr></thead><tbody>'+gapis+'</tbody></table></div></div>'+
-   '<div class="card"><div class="card-h">模型失败次数'+
-     '<span class="label gray">'+RANGE_LABEL[RANGE]+'</span></div><div class="card-b tight">'+
-     '<table><thead><tr><th>模型</th><th class="num">失败次数</th><th>占比</th></tr></thead>'+
-     '<tbody>'+fmodels+'</tbody></table></div></div>'+
-   '<div class="card"><div class="card-h">每日用量趋势（全体 · 近 14 天）</div>'+
+     '<div class="sp"></div><span class="hint" style="margin:0">共 '+fmt(reqTotal)+
+     ' 次 · 失败 '+fmt(fr.total||0)+' 次</span></div>'+
+     '<div class="card-b tight"><table><thead><tr><th>模型</th>'+
+     '<th class="num">请求次数</th><th class="num">占比</th>'+
+     '<th style="width:260px">成功 / 总数</th></tr></thead>'+
+     '<tbody>'+mut+'</tbody></table></div></div>'+
+   '<div class="card"><div class="card-h">每日用量趋势（全体）'+
+     '<span class="label gray">'+esc(trendLabel(daily))+'</span>'+
+     '<div class="sp"></div>'+trendCtl()+'</div>'+
      '<div class="card-b">'+totalChart+'</div></div>'+
-   '<div class="card"><div class="card-h">每人每日用量（近 14 天）'+
+   '<div class="card"><div class="card-h">每人每日用量'+
+     '<span class="label gray">'+esc(trendLabel(daily))+'</span>'+
      '<div class="sp"></div><span class="hint" style="margin:0">点击图例可隐藏/显示</span></div>'+
      '<div class="card-b">'+userChart+'</div></div>';
 }
 
-function refreshAll(){
-  loadAll().then(function(){ render(); });
+function refreshAll(btn){
+  var label=btn?btn.innerHTML:'';
+  if(btn){ btn.disabled=true; btn.innerHTML='刷新中…'; }
+  loadAll().then(function(){ render(); }, function(){
+    if(btn){ btn.disabled=false; btn.innerHTML=label; }
+  });
 }
 
 /* ---------------- security ---------------- */
@@ -610,7 +707,7 @@ function ipTag(list, action){
   return list.map(function(ip){
     return '<span class="label gray" style="margin:0 6px 6px 0;display:inline-flex;align-items:center;gap:6px">'+
       esc(ip)+'<a href="#" data-sec-remove="'+action+'" data-ip="'+esc(ip)+
-      '" style="color:#cf222e;text-decoration:none">×</a></span>';
+      '" style="color:var(--red);text-decoration:none">×</a></span>';
   }).join('');
 }
 
@@ -631,7 +728,7 @@ function viewSecurity(){
 
   return '<div class="pagehead"><div><h2>安全</h2>'+
     '<div class="sub">登录锁定、失败来源与 IP 访问控制</div></div><div class="sp"></div>'+
-    '<button class="btn" onclick="secReload()">刷新</button></div>'+
+    '<button class="btn" onclick="secReload(this)">刷新</button></div>'+
    '<div class="card"><div class="card-h">登录锁定</div><div class="card-b">'+
      '<div class="row2">'+
        '<div><div class="hint" style="margin:0 0 4px">状态</div>'+
@@ -676,6 +773,79 @@ function secAction(action,ip){
 
 /* ---------------- settings ---------------- */
 
+var UPD=null, UPD_BUSY=false;
+
+function updBody(){
+  var u=UPD;
+  if(UPD_BUSY) return '<div class="tlsline">正在处理…</div>';
+  if(!u) return '<div class="hint" style="margin:0">仓库：<code>LhyCloud/AI-API-Relay-Station</code>，'+
+    '点「检查更新」查询最新 Release。</div>';
+  if(u.error) return '<div class="tlsline bad">检查失败：'+esc(u.error)+'</div>';
+  var h='';
+  if(u.hasUpdate){
+    h+='<div class="tlsline warn">发现新版本 <b>'+esc(u.latest)+'</b>（当前 '+esc(u.current)+'）</div>';
+  }else{
+    h+='<div class="tlsline ok">已是最新版本（'+esc(u.current)+'）</div>';
+  }
+  if(u.latest){
+    h+='<div class="tlsrow"><span>最新版本</span><code>'+esc(u.latest)+'</code></div>';
+    h+='<div class="tlsrow"><span>发布时间</span><code>'+esc(u.publishedAt||'-')+'</code></div>';
+    h+='<div class="tlsrow"><span>更新包</span><code>'+esc(u.assetName||'（无 ai-relay.exe）')+'</code></div>';
+  }
+  if(u.hasUpdate&&!u.canApply){
+    h+='<div class="hint">这个 Release 里没有 ai-relay.exe，无法自动更新，请手动下载。</div>';
+  }
+  if(u.notes){
+    h+='<div class="updnote">'+esc(u.notes)+'</div>';
+  }
+  return h;
+}
+
+function checkUpdate(btn){
+  if(UPD_BUSY) return;
+  UPD_BUSY=true;
+  if(btn){ btn.disabled=true; btn.innerHTML='检查中…'; }
+  api('/api/update/check','POST',{}).then(function(r){
+    UPD_BUSY=false;
+    if(r.status!==200||!r.data){ UPD={error:'请求失败（HTTP '+r.status+'）'}; }
+    else if(r.data.ok===false){ UPD={error:r.data.error||'检查失败'}; }
+    else { UPD=r.data; }
+    render();
+  },function(){
+    UPD_BUSY=false; UPD={error:'网络请求失败'}; render();
+  });
+}
+
+function applyUpdate(btn){
+  if(UPD_BUSY||!UPD||!UPD.canApply) return;
+  if(!confirm('更新到 v'+UPD.latest+'？\n会下载新版本、替换 ai-relay.exe 并自动重启服务（约 1~3 秒内完成切换）。')) return;
+  UPD_BUSY=true;
+  if(btn){ btn.disabled=true; btn.innerHTML='正在下载…'; }
+  api('/api/update/apply','POST',{}).then(function(r){
+    if(r.status!==200){
+      UPD_BUSY=false;
+      toast((r.data&&r.data.error&&r.data.error.message)||'更新失败',true);
+      render();
+      return;
+    }
+    toast((r.data&&r.data.message)||'正在重启…');
+    waitRestart();
+  },function(){
+    UPD_BUSY=false; toast('更新请求失败',true); render();
+  });
+}
+
+function waitRestart(){
+  var tries=0;
+  var timer=setInterval(function(){
+    tries++;
+    api('/api/session').then(function(r){
+      if(r.status===200){ clearInterval(timer); location.reload(); }
+    },function(){});
+    if(tries>60){ clearInterval(timer); toast('服务未在 2 分钟内恢复，请手动启动 ai-relay.exe',true); }
+  },2000);
+}
+
 function viewSettings(){
   var s=CFG.settings;
   var off=Number(s.resetOffsetMinutes||0);
@@ -703,6 +873,17 @@ function viewSettings(){
        '<input type="password" id="s_pw" autocomplete="new-password" placeholder="留空则不修改">'+
        '<div class="hint">密码经加盐哈希后传输与保存，明文不会出现在网络上或配置文件中。</div></div>'+
      '<div style="display:flex;gap:8px"><button class="btn primary" id="saveSettings">保存设置</button></div>'+
+   '</div></div>'+
+   '<div class="card" style="max-width:560px"><div class="card-h">版本更新'+
+     '<span class="label gray">v'+esc(VER)+'</span></div><div class="card-b">'+
+     updBody()+
+     '<div style="display:flex;gap:8px;margin-top:12px">'+
+       '<button class="btn" id="updCheck">检查更新</button>'+
+       '<button class="btn primary" id="updApply"'+
+         ((UPD&&UPD.canApply&&!UPD_BUSY)?'':' disabled')+'>下载并更新</button>'+
+     '</div>'+
+     '<div class="hint">更新会下载 ai-relay.exe 覆盖当前程序并自动重启（旧文件备份为 ai-relay.exe.old）；'+
+     'Release 里没有 ai-relay.exe 时不会做任何改动。</div>'+
    '</div></div>'+
    '<div class="card"><div class="card-h">数据文件</div><div class="card-b">'+
      '<div class="hint">所有配置与用量保存在程序目录下的 <code>relay-data.json</code>，'+
@@ -1125,6 +1306,23 @@ function sendConfig(payload,okMsg){
 }
 
 function bindView(){
+  var ucb=document.getElementById('updCheck');
+  if(ucb) ucb.onclick=function(){ checkUpdate(this); };
+  var uab=document.getElementById('updApply');
+  if(uab) uab.onclick=function(){ applyUpdate(this); };
+  var tds=document.querySelectorAll('#app [data-trend]');
+  for(var ti=0;ti<tds.length;ti++){
+    tds[ti].onclick=function(){
+      setTrend(parseInt(this.getAttribute('data-trend'),10),0);
+    };
+  }
+  var tss=document.querySelectorAll('#app [data-trend-shift]');
+  for(var ts=0;ts<tss.length;ts++){
+    tss[ts].onclick=function(){
+      var dir=parseInt(this.getAttribute('data-trend-shift'),10)||1;
+      setTrend(TREND_DAYS,Math.max(0,TREND_OFF+dir*TREND_DAYS));
+    };
+  }
   var rbs=document.querySelectorAll('#app [data-range]');
   for(var i=0;i<rbs.length;i++){
     rbs[i].onclick=function(){

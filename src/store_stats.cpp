@@ -252,8 +252,13 @@ bool Store::apply(const json::Value& in, std::string& err) {
     return true;
 }
 
-json::Value Store::stats() const {
+json::Value Store::stats(int days, int offsetDays) const {
     std::lock_guard<std::mutex> lock(mu_);
+    int winDays = days;
+    if (winDays < 1) winDays = 14;
+    if (winDays > 90) winDays = 90;
+    int winOff = offsetDays < 0 ? 0 : offsetDays;
+    if (winOff > 3650) winOff = 3650;
     long long now = util::nowSeconds();
     std::string today = dayKeyLocked();
     long long todayNum = dayNumberFromKey(today);
@@ -268,12 +273,14 @@ json::Value Store::stats() const {
     };
     std::map<std::string, Agg> perUser;
     std::map<std::string, long long> allModels;
+    std::map<std::string, long long> allModelRequests;
     long long allTotal = 0;
 
     struct RangeAgg {
         long long tokens = 0;
         long long requests = 0;
         std::map<std::string, long long> models;
+        std::map<std::string, long long> modelRequests;   // 模型 -> 请求次数
     };
     RangeAgg rDay;
     RangeAgg rWeek;
@@ -300,11 +307,13 @@ json::Value Store::stats() const {
         if (inDay) a.today += tokens;
         if (inWeek) a.week += tokens;
         allModels[b.model] += tokens;
+        allModelRequests[b.model] += b.requests;
         allTotal += tokens;
 
         rAll.tokens += tokens;
         rAll.requests += b.requests;
         rAll.models[b.model] += tokens;
+        rAll.modelRequests[b.model] += b.requests;
         RangeAgg& ua = uAll[b.userId];
         ua.tokens += tokens;
         ua.requests += b.requests;
@@ -313,6 +322,7 @@ json::Value Store::stats() const {
             rWeek.tokens += tokens;
             rWeek.requests += b.requests;
             rWeek.models[b.model] += tokens;
+            rWeek.modelRequests[b.model] += b.requests;
             RangeAgg& uw = uWeek[b.userId];
             uw.tokens += tokens;
             uw.requests += b.requests;
@@ -322,6 +332,7 @@ json::Value Store::stats() const {
             rDay.tokens += tokens;
             rDay.requests += b.requests;
             rDay.models[b.model] += tokens;
+            rDay.modelRequests[b.model] += b.requests;
             RangeAgg& ud = uDay[b.userId];
             ud.tokens += tokens;
             ud.requests += b.requests;
@@ -389,6 +400,8 @@ json::Value Store::stats() const {
         json::Value mj = json::Value::object();
         mj.set("model", json::Value::str(mit->first));
         mj.set("tokens", json::Value::integer(mit->second));
+        std::map<std::string, long long>::const_iterator rit = allModelRequests.find(mit->first);
+        mj.set("requests", json::Value::integer(rit == allModelRequests.end() ? 0 : rit->second));
         double ms = allTotal > 0 ? (double)mit->second * 100.0 / (double)allTotal : 0.0;
         mj.set("share", json::Value::number(ms));
         models.push(mj);
@@ -477,6 +490,9 @@ json::Value Store::stats() const {
             json::Value mj = json::Value::object();
             mj.set("model", json::Value::str(ml[m].second));
             mj.set("tokens", json::Value::integer(ml[m].first));
+            std::map<std::string, long long>::const_iterator mrit =
+                total.modelRequests.find(ml[m].second);
+            mj.set("requests", json::Value::integer(mrit == total.modelRequests.end() ? 0 : mrit->second));
             double mshare = total.tokens > 0 ? (double)ml[m].first * 100.0 / (double)total.tokens : 0.0;
             mj.set("share", json::Value::number(mshare));
             marr.push(mj);
@@ -487,10 +503,11 @@ json::Value Store::stats() const {
     }
     out.set("byRange", byRange);
 
-    const int kDays = 14;
+    const int kDays = winDays;
     std::vector<std::string> dayLabels((std::size_t)kDays);
     for (int i = 0; i < kDays; ++i) {
-        dayLabels[(std::size_t)(kDays - 1 - i)] = util::shiftedDayKey(now - (long long)i * 86400, dayOffset);
+        long long back = (long long)winOff + (long long)i;
+        dayLabels[(std::size_t)(kDays - 1 - i)] = util::shiftedDayKey(now - back * 86400, dayOffset);
     }
     std::vector<long long> dayTotal((std::size_t)kDays, 0);
     std::map<std::string, std::vector<long long>> userSeries;
@@ -498,8 +515,8 @@ json::Value Store::stats() const {
         const UsageBucket& b = it->second;
         if (liveUsers.find(b.userId) == liveUsers.end()) continue;
         long long diff = todayNum - dayNumberFromKey(b.day);
-        if (diff < 0 || diff >= kDays) continue;
-        std::size_t idx = (std::size_t)(kDays - 1 - (int)diff);
+        if (diff < winOff || diff >= (long long)winOff + kDays) continue;
+        std::size_t idx = (std::size_t)(kDays - 1 - (int)(diff - winOff));
         long long tokens = b.prompt + b.completion;
         dayTotal[idx] += tokens;
         std::vector<long long>& s = userSeries[b.userId];
@@ -511,6 +528,8 @@ json::Value Store::stats() const {
     json::Value daysArr = json::Value::array();
     for (int i = 0; i < kDays; ++i) daysArr.push(json::Value::str(dayLabels[(std::size_t)i]));
     daily.set("days", daysArr);
+    daily.set("windowDays", json::Value::integer(kDays));
+    daily.set("windowOffset", json::Value::integer(winOff));
     json::Value totalArr = json::Value::array();
     for (int i = 0; i < kDays; ++i) totalArr.push(json::Value::integer(dayTotal[(std::size_t)i]));
     daily.set("total", totalArr);

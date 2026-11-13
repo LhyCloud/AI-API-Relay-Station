@@ -7,7 +7,7 @@ static const char* kLoginHtml1 = R"HTML(<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>Console</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2324292f'/%3E%3Ctext x='16' y='22' font-family='Segoe UI,Arial,sans-serif' font-size='18' font-weight='700' fill='%23ffffff' text-anchor='middle'%3E%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230969da'/%3E%3Cg stroke='%23ffffff' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round' fill='none'%3E%3Cpath d='M8 12.5h14m0 0-3.6-3.6m3.6 3.6-3.6 3.6'/%3E%3Cpath d='M24 19.5H10m0 0 3.6 3.6M10 19.5l3.6-3.6'/%3E%3C/g%3E%3C/svg%3E">
 <style>
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -16,6 +16,8 @@ body{margin:0;display:flex;align-items:center;justify-content:center;background:
  font-size:14px;color:#1f2328}
 .box{width:100%;max-width:320px;padding:24px}
 h1{margin:0 0 18px;font-size:16px;font-weight:600;text-align:center;color:#24292f}
+.logo{display:flex;align-items:center;justify-content:center;margin-bottom:14px}
+.logo .mark{width:38px;height:38px;border-radius:10px;background:#0969da;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(9,105,218,.35)}
 .card{background:#fff;border:1px solid #d0d7de;border-radius:6px;padding:16px}
 label{display:block;font-size:12px;font-weight:600;margin-bottom:5px}
 input{width:100%;padding:5px 10px;font:inherit;font-size:14px;line-height:20px;color:#1f2328;
@@ -30,6 +32,7 @@ button:disabled{opacity:.6;cursor:default}
 </head>
 <body>
 <div class="box">
+  <div class="logo"><span class="mark"><svg viewBox='0 0 32 32' width='13' height='13' fill='none' stroke='currentColor' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M7 12h15m0 0-4-4m4 4-4 4'/><path d='M25 20H10m0 0 4 4m-4-4 4-4'/></svg></span></div>
   <h1>Console</h1>
   <div class="card">
     <form id="lf" autocomplete="off">
@@ -169,93 +172,126 @@ static const char* kAdminHtml1 = R"HTML(<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AI Relay</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2324292f'/%3E%3Ctext x='16' y='22' font-family='Segoe UI,Arial,sans-serif' font-size='18' font-weight='700' fill='%23ffffff' text-anchor='middle'%3ER%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230969da'/%3E%3Cg stroke='%23ffffff' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round' fill='none'%3E%3Cpath d='M8 12.5h14m0 0-3.6-3.6m3.6 3.6-3.6 3.6'/%3E%3Cpath d='M24 19.5H10m0 0 3.6 3.6M10 19.5l3.6-3.6'/%3E%3C/g%3E%3C/svg%3E">
 <style>
 *{box-sizing:border-box}
+:root{
+ --bg:#f6f8fa; --panel:#fff; --panel2:#f6f8fa; --panel3:#f3f4f6;
+ --text:#1f2328; --muted:#656d76; --border:#d0d7de; --border-soft:#eaeef2; --track:#eaeef2;
+ --accent:#0969da; --accent-bg:#ddf4ff; --green:#1a7f37; --green-bg:#dafbe1;
+ --red:#cf222e; --red-bg:#ffebe9;
+ --primary:#1f883d; --primary-hover:#1a7f37;
+ --topbar-bg:#fff; --topbar-fg:#1f2328; --topbar-border:#d0d7de; --topbar-hover:#f3f4f6;
+ --on-solid:#fff;
+}
+:root.theme-dark{
+ --bg:#0d1117; --panel:#161b22; --panel2:#1c2128; --panel3:#22272e;
+ --text:#e6edf3; --muted:#8b949e; --border:#30363d; --border-soft:#21262d; --track:#30363d;
+ --accent:#58a6ff; --accent-bg:#0d2d6b; --green:#3fb950; --green-bg:#0f2f1a;
+ --red:#f85149; --red-bg:#3d1418;
+ --primary:#238636; --primary-hover:#2ea043;
+ --topbar-bg:#161b22; --topbar-fg:#e6edf3; --topbar-border:#30363d; --topbar-hover:#22272e;
+ --on-solid:#fff;
+}
 html,body{height:100%}
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif;
- font-size:14px;line-height:1.5;color:#1f2328;background:#f6f8fa}
-a{color:#0969da;text-decoration:none}
+ font-size:14px;line-height:1.5;color:var(--text);background:var(--bg)}
+a{color:var(--accent);text-decoration:none}
 a:hover{text-decoration:underline}
 code,.mono{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;font-size:12px}
 
-.topbar{background:#24292f;color:#f6f8fa;display:flex;align-items:center;height:48px;padding:0 16px;gap:10px}
-.topbar .brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:15px;color:#fff}
-.topbar .mark{width:20px;height:20px;border-radius:4px;background:#f6f8fa;color:#24292f;display:flex;
+.topbar{background:var(--topbar-bg);color:var(--topbar-fg);display:flex;align-items:center;height:48px;
+ padding:0 16px;gap:10px;border-bottom:1px solid var(--topbar-border);
+ box-shadow:0 1px 2px rgba(27,31,36,.04)}
+.topbar .brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:15px;color:var(--topbar-fg)}
+.topbar .mark{width:22px;height:22px;border-radius:6px;background:var(--accent);color:var(--on-solid);display:flex;
  align-items:center;justify-content:center;font-size:12px;font-weight:700}
-.topbar .ver{font-size:11px;line-height:16px;color:#8b949e;border:1px solid #444c56;border-radius:2em;padding:0 7px}
+.topbar .mark svg{display:block}
+.topbar .ver{font-size:11px;line-height:16px;color:var(--muted);border:1px solid var(--topbar-border);
+ border-radius:2em;padding:0 7px}
 .topbar .sp{flex:1}
-.topbar .stat{font-size:12px;color:#8b949e;display:flex;align-items:center;gap:6px}
-.dot{width:8px;height:8px;border-radius:50%;background:#3fb950;display:inline-block}
-.topbar button{background:transparent;border:1px solid #444c56;color:#f6f8fa;border-radius:6px;padding:3px 10px;
- font-size:12px;cursor:pointer}
-.topbar button:hover{background:#30363d;border-color:#8b949e}
+.topbar .stat{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block}
+.topbar button{background:var(--panel);border:1px solid var(--topbar-border);color:var(--topbar-fg);
+ border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer;font-family:inherit}
+.topbar button:hover{background:var(--topbar-hover);border-color:var(--accent)}
+.topbar .themebtn{display:inline-flex;align-items:center;gap:5px;min-width:62px;justify-content:center}
 
-.tabs{display:flex;gap:2px;background:#fff;border-bottom:1px solid #d0d7de;padding:0 16px;
+.tabs{display:flex;gap:2px;background:var(--panel);border-bottom:1px solid var(--border);padding:0 16px;
  overflow-x:auto;overflow-y:hidden;min-height:41px}
-.tab{padding:9px 12px;font-size:14px;color:#1f2328;cursor:pointer;border-bottom:2px solid transparent;
+.tab{padding:9px 12px;font-size:14px;color:var(--text);cursor:pointer;border-bottom:2px solid transparent;
  margin-bottom:-1px;white-space:nowrap;user-select:none}
-.tab:hover{border-bottom-color:#d0d7de}
+.tab:hover{border-bottom-color:var(--border)}
 .tab.on{font-weight:600;border-bottom-color:#fd8c73}
 
 .wrap{max-width:1080px;margin:0 auto;padding:24px 16px 64px}
 .pagehead{display:flex;align-items:flex-start;gap:12px;margin-bottom:16px;flex-wrap:wrap}
 .pagehead h2{margin:0;font-size:20px;font-weight:600}
-.pagehead .sub{color:#656d76;font-size:12px;margin-top:2px}
+.pagehead .sub{color:var(--muted);font-size:12px;margin-top:2px}
 .pagehead .sp{flex:1}
 
-.card{background:#fff;border:1px solid #d0d7de;border-radius:6px;margin-bottom:16px}
-.card-h{display:flex;align-items:center;gap:8px;padding:11px 16px;border-bottom:1px solid #d0d7de;
- background:#f6f8fa;border-radius:6px 6px 0 0;font-weight:600;font-size:14px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:6px;margin-bottom:16px}
+.card-h{display:flex;align-items:center;gap:8px;padding:11px 16px;border-bottom:1px solid var(--border);
+ background:var(--panel2);border-radius:6px 6px 0 0;font-weight:600;font-size:14px}
 .card-h .sp{flex:1}
 .card-b{padding:16px}
 .card-b.tight{padding:0}
 
 .btn{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;font-size:12px;font-weight:500;
- line-height:18px;border-radius:6px;border:1px solid rgba(31,35,40,.15);background:#f6f8fa;color:#24292f;
+ line-height:18px;border-radius:6px;border:1px solid rgba(31,35,40,.15);background:var(--panel2);color:var(--text);
  cursor:pointer;font-family:inherit}
-.btn:hover{background:#f3f4f6}
-.btn.primary{background:#1f883d;border-color:rgba(31,35,40,.15);color:#fff}
-.btn.primary:hover{background:#1a7f37}
-.btn.danger{color:#cf222e}
-.btn.danger:hover{background:#cf222e;color:#fff;border-color:#cf222e}
+.btn:hover{background:var(--panel3)}
+.btn.primary{background:var(--primary);border-color:rgba(31,35,40,.15);color:#fff}
+.btn.primary:hover{background:var(--primary-hover)}
+.btn.danger{color:var(--red)}
+.btn.danger:hover{background:var(--red);color:var(--on-solid);border-color:var(--red)}
 .btn.sm{padding:3px 8px;font-size:11px}
 .btn:disabled{opacity:.6;cursor:default}
 
 table{width:100%;border-collapse:collapse}
-th{text-align:left;font-weight:600;font-size:12px;color:#656d76;padding:8px 12px;
- border-bottom:1px solid #d0d7de;background:#f6f8fa;white-space:nowrap}
-td{padding:8px 12px;border-bottom:1px solid #eaeef2;vertical-align:middle}
+th{text-align:left;font-weight:600;font-size:12px;color:var(--muted);padding:8px 12px;
+ border-bottom:1px solid var(--border);background:var(--panel2);white-space:nowrap}
+td{padding:8px 12px;border-bottom:1px solid var(--border-soft);vertical-align:middle}
 tbody tr:last-child td{border-bottom:none}
-tbody tr:hover{background:#f6f8fa}
+tbody tr:hover{background:var(--panel2)}
 .num{text-align:right;font-variant-numeric:tabular-nums}
 
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px;margin-bottom:16px}
-.metric{background:#fff;border:1px solid #d0d7de;border-radius:6px;padding:14px 16px}
-.metric .k{font-size:12px;color:#656d76}
+.metric{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:14px 16px}
+.metric .k{font-size:12px;color:var(--muted)}
 .metric .v{font-size:24px;font-weight:600;margin-top:4px;font-variant-numeric:tabular-nums}
-.metric .d{font-size:12px;color:#656d76;margin-top:2px}
+.metric .d{font-size:12px;color:var(--muted);margin-top:2px}
 
 .label{display:inline-block;font-size:11px;font-weight:500;line-height:16px;padding:1px 7px;border-radius:2em;
- border:1px solid #d0d7de;color:#656d76;background:#fff}
-.label.green{color:#1a7f37;border-color:rgba(31,136,61,.4);background:#dafbe1}
-.label.red{color:#cf222e;border-color:rgba(207,34,46,.4);background:#ffebe9}
-.label.blue{color:#0969da;border-color:rgba(9,105,218,.4);background:#ddf4ff}
-.label.gray{background:#f6f8fa}
+ border:1px solid var(--border);color:var(--muted);background:var(--panel)}
+.label.green{color:var(--green);border-color:rgba(31,136,61,.4);background:var(--green-bg)}
+.label.red{color:var(--red);border-color:rgba(207,34,46,.4);background:var(--red-bg)}
+.label.blue{color:var(--accent);border-color:rgba(9,105,218,.4);background:var(--accent-bg)}
+.label.gray{background:var(--panel2)}
 
-.bar{height:6px;border-radius:3px;background:#eaeef2;overflow:hidden;min-width:60px}
-.bar>i{display:block;height:100%;background:#0969da;border-radius:3px}
-.bar.g>i{background:#1a7f37}
+.bar{height:6px;border-radius:3px;background:var(--track);overflow:hidden;min-width:60px;display:flex}
+.bar>i{display:block;height:100%;background:var(--accent);border-radius:3px;flex:0 0 auto}
+.bar.g>i{background:var(--green)}
+.bar>b{display:block;height:100%;background:var(--red);flex:0 0 auto}
 
-.empty{padding:32px 16px;text-align:center;color:#656d76;font-size:13px}
+.tlsbox{border:1px solid var(--border);border-radius:6px;padding:10px 12px;background:var(--panel2);margin-bottom:12px}
+.tlsline{font-size:13px;margin-bottom:6px}
+.tlsline.ok{color:var(--green)}
+.tlsline.warn{color:#9a6700}
+.tlsline.bad{color:var(--red)}
+.tlsrow{display:flex;gap:10px;font-size:12px;margin:3px 0}
+.tlsrow>span{color:var(--muted);min-width:72px}
+.updnote{margin-top:8px;max-height:200px;overflow:auto;white-space:pre-wrap;font-size:12px;
+ color:var(--muted);background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:8px 10px}
+.empty{padding:32px 16px;text-align:center;color:var(--muted);font-size:13px}
 
 .form-row{margin-bottom:14px}
 .form-row>label{display:block;font-weight:600;font-size:12px;margin-bottom:5px}
-.hint{font-size:12px;color:#656d76;margin-top:4px}
+.hint{font-size:12px;color:var(--muted);margin-top:4px}
 input[type=text],input[type=password],input[type=number],textarea,select{
- width:100%;padding:5px 10px;font-size:14px;line-height:20px;color:#1f2328;background:#fff;
- border:1px solid #d0d7de;border-radius:6px;font-family:inherit;outline:none}
-input:focus,textarea:focus{border-color:#0969da;box-shadow:0 0 0 3px rgba(9,105,218,.3)}
+ width:100%;padding:5px 10px;font-size:14px;line-height:20px;color:var(--text);background:var(--panel);
+ border:1px solid var(--border);border-radius:6px;font-family:inherit;outline:none}
+input:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(9,105,218,.3)}
 textarea{resize:vertical;min-height:64px;font-family:ui-monospace,Consolas,monospace;font-size:12px}
 .check{display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer}
 .check input{width:14px;height:14px;margin:0}
@@ -263,13 +299,13 @@ textarea{resize:vertical;min-height:64px;font-family:ui-monospace,Consolas,monos
 .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
 @media(max-width:720px){.row2,.row3{grid-template-columns:1fr}}
 
-.apibox{border:1px solid #d0d7de;border-radius:6px;padding:12px;margin-bottom:10px;background:#f6f8fa}
+.apibox{border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:var(--panel2)}
 .apibox .h{display:flex;align-items:center;gap:8px;margin-bottom:10px}
-.apibox .h .t{font-weight:600;font-size:12px;color:#656d76}
+.apibox .h .t{font-weight:600;font-size:12px;color:var(--muted)}
 .apibox .h .sp{flex:1}
 
-.modelbox{max-height:200px;overflow:auto;border:1px solid #d0d7de;border-radius:6px;padding:8px;
- background:#fff;margin-top:6px}
+.modelbox{max-height:200px;overflow:auto;border:1px solid var(--border);border-radius:6px;padding:8px;
+ background:var(--panel);margin-top:6px}
 .modelbox .check{margin:3px 0;font-size:12px}
 .modelbox .check .mono{font-size:12px}
 .modelbox input[type=text]{font-size:12px;margin-bottom:6px}
@@ -280,48 +316,49 @@ textarea{resize:vertical;min-height:64px;font-family:ui-monospace,Consolas,monos
 .mrow input.alias{flex:1;margin:0;padding:2px 6px;font-size:12px;min-width:80px}
 
 .keyline{display:flex;align-items:center;gap:6px}
-.keyline code{background:#f6f8fa;border:1px solid #d0d7de;border-radius:6px;padding:1px 6px;color:#1f2328}
+.keyline code{background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:1px 6px;color:var(--text)}
 .keyline code.keymask{display:inline-block;cursor:pointer;user-select:all;max-width:118px;
  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .keyline code.keymask.expanded{max-width:200px;white-space:normal;word-break:break-all}
 
 .overlay{position:fixed;inset:0;background:rgba(27,31,36,.5);display:flex;align-items:flex-start;
  justify-content:center;padding:48px 16px;z-index:50;overflow-y:auto}
-.modal{background:#fff;border-radius:6px;border:1px solid #d0d7de;width:100%;max-width:640px;
+.modal{background:var(--panel);border-radius:6px;border:1px solid var(--border);width:100%;max-width:640px;
  box-shadow:0 8px 24px rgba(140,149,159,.2)}
-.modal .mh{padding:12px 16px;border-bottom:1px solid #d0d7de;font-weight:600;display:flex;align-items:center}
+.modal .mh{padding:12px 16px;border-bottom:1px solid var(--border);font-weight:600;display:flex;align-items:center}
 .modal .mh .sp{flex:1}
 .modal .mb{padding:16px;max-height:64vh;overflow-y:auto}
-.modal .mf{padding:12px 16px;border-top:1px solid #d0d7de;display:flex;gap:8px;justify-content:flex-end;
- background:#f6f8fa;border-radius:0 0 6px 6px}
-.x{border:none;background:none;font-size:18px;line-height:1;color:#656d76;cursor:pointer;padding:2px 4px}
+.modal .mf{padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;
+ background:var(--panel2);border-radius:0 0 6px 6px}
+.x{border:none;background:none;font-size:18px;line-height:1;color:var(--muted);cursor:pointer;padding:2px 4px}
 
 .login{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
 .login .box{width:100%;max-width:340px}
 .login .logo{display:flex;align-items:center;justify-content:center;gap:8px;font-size:20px;font-weight:600;margin-bottom:20px}
-.login .logo .mark{width:28px;height:28px;border-radius:6px;background:#24292f;color:#fff;display:flex;
+.login .logo .mark{width:28px;height:28px;border-radius:6px;background:var(--text);color:var(--on-solid);display:flex;
  align-items:center;justify-content:center;font-size:14px;font-weight:700}
-.err{color:#cf222e;font-size:12px;margin-top:8px;min-height:16px}
+.err{color:var(--red);font-size:12px;margin-top:8px;min-height:16px}
 
-.toast{position:fixed;right:16px;bottom:16px;background:#24292f;color:#fff;padding:9px 14px;border-radius:6px;
+.toast{position:fixed;right:16px;bottom:16px;background:var(--text);color:var(--bg);padding:9px 14px;border-radius:6px;
  font-size:13px;z-index:100;box-shadow:0 8px 24px rgba(140,149,159,.3);opacity:0;transform:translateY(8px);
  transition:opacity .18s,transform .18s;pointer-events:none;max-width:360px}
-.toast.on{opacity:1;transform:none}
-.toast.bad{background:#cf222e}
+)HTML";
+static const char* kAdminHtml2 = R"HTML(.toast.on{opacity:1;transform:none}
+.toast.bad{background:var(--red)}
 
 .logbox{background:#0d1117;color:#c9d1d9;border-radius:6px;padding:12px;font-family:ui-monospace,Consolas,monospace;
  font-size:12px;line-height:1.6;max-height:280px;overflow-y:auto;white-space:pre-wrap;word-break:break-all}
 .logbox .t{color:#8b949e}
 
-.seg{display:inline-flex;border:1px solid #d0d7de;border-radius:6px;overflow:hidden;background:#fff}
-.segbtn{border:0;border-right:1px solid #d0d7de;background:#fff;color:#1f2328;font-size:12px;
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;background:var(--panel)}
+.segbtn{border:0;border-right:1px solid var(--border);background:var(--panel);color:var(--text);font-size:12px;
  padding:4px 10px;cursor:pointer;font-family:inherit;white-space:nowrap}
 .segbtn:last-child{border-right:0}
-.segbtn:hover{background:#f3f4f6}
-.segbtn.on{background:#0969da;color:#fff}
+.segbtn:hover{background:var(--panel3)}
+.segbtn.on{background:var(--accent);color:var(--on-solid)}
 
 .chart{width:100%;height:auto;display:block}
-.legend{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:10px;font-size:12px;color:#1f2328}
+.legend{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:10px;font-size:12px;color:var(--text)}
 .legend .lg{display:inline-flex;align-items:center;gap:5px;cursor:pointer;user-select:none}
 .legend .lg i{width:9px;height:9px;border-radius:2px;display:inline-block}
 .legend .lg.off{opacity:.4}
@@ -338,6 +375,28 @@ textarea{resize:vertical;min-height:64px;font-family:ui-monospace,Consolas,monos
 )HTML";
 static const char* kAdminJs1 = R"HTML(
 var CFG=null, LOGS=[], TAB='overview', MODAL=null, BUSY=false, VER='', RANGE='day';
+var TREND_DAYS=14, TREND_OFF=0, TREND_BUSY=false;   // 趋势窗口：7/14/30 天，可向前翻页
+var THEME=(function(){ try{ return localStorage.getItem('relay.theme')==='dark'?'dark':'light'; }catch(e){ return 'light'; } })();
+
+function applyTheme(){
+  var el=document.documentElement;
+  if(!el) return;
+  if(THEME==='dark') el.classList.add('theme-dark'); else el.classList.remove('theme-dark');
+}
+function setTheme(t){
+  THEME=(t==='dark')?'dark':'light';
+  try{ localStorage.setItem('relay.theme',THEME); }catch(e){}
+  applyTheme();
+  if(CFG) render();
+}
+function themeLabel(){ return THEME==='dark'?'暗色':'亮色'; }
+function accentHex(){ return THEME==='dark'?'#58a6ff':'#0969da'; }
+function chartInk(){
+  return THEME==='dark'
+    ? {grid:'#30363d',text:'#8b949e',dot:'#161b22'}
+    : {grid:'#eaeef2',text:'#656d76',dot:'#fff'};
+}
+applyTheme();
 var RANGE_LABEL={day:'今日',week:'本周',all:'总计'};
 var HIDDEN={};
 var CHART_COLORS=['#0969da','#1a7f37','#cf222e','#8250df','#bf3989','#9a6700','#1b7c83','#6e7781',
@@ -407,17 +466,18 @@ function svgLineChart(labels,series,opts){
   var top=niceMax(max);
   function X(i){ return PL+(n<=1?iw/2:iw*i/(n-1)); }
   function Y(v){ return PT+ih-ih*(v/top); }
+  var ink=chartInk();
   var svg='<svg viewBox="0 0 '+W+' '+H+'" class="chart">';
   for(var g=0;g<=4;g++){
     var gy=PT+ih*g/4;
     svg+='<line x1="'+PL+'" y1="'+gy.toFixed(1)+'" x2="'+(W-PR)+'" y2="'+gy.toFixed(1)+
       '" stroke="#eaeef2" stroke-width="1"/>';
-    svg+='<text x="'+(PL-8)+'" y="'+(gy+4).toFixed(1)+'" text-anchor="end" font-size="11" fill="#656d76">'+
+    svg+='<text x="'+(PL-8)+'" y="'+(gy+4).toFixed(1)+'" text-anchor="end" font-size="11" fill="'+ink.text+'">'+
       fmtBig(top*(4-g)/4)+'</text>';
   }
   for(var i=0;i<n;i++){
     if(n>8&&i%2!==0&&i!==n-1) continue;
-    svg+='<text x="'+X(i).toFixed(1)+'" y="'+(H-8)+'" text-anchor="middle" font-size="11" fill="#656d76">'+
+    svg+='<text x="'+X(i).toFixed(1)+'" y="'+(H-8)+'" text-anchor="middle" font-size="11" fill="'+ink.text+'">'+
       esc(String(labels[i]||'').substring(5))+'</text>';
   }
   series.forEach(function(s,si){
@@ -430,7 +490,7 @@ function svgLineChart(labels,series,opts){
       var v=(s.values&&s.values[k])||0;
       var x=X(k).toFixed(1), y=Y(v).toFixed(1);
       d+=(k?'L':'M')+x+' '+y;
-      dots+='<circle cx="'+x+'" cy="'+y+'" r="3.2" fill="#fff" stroke="'+s.color+
+      dots+='<circle cx="'+x+'" cy="'+y+'" r="3.2" fill="'+ink.dot+'" stroke="'+s.color+
         '" stroke-width="2"><title>'+esc(s.name+' · '+(labels[k]||'')+' · '+fmt(v)+' tokens')+
         '</title></circle>';
       if(v>0){
@@ -481,7 +541,7 @@ function api(path,method,body){
 /* ---------------- data ---------------- */
 
 function loadAll(){
-  return api('/api/config').then(function(r){
+  return api('/api/config?days='+TREND_DAYS+'&offset='+TREND_OFF).then(function(r){
     if(r.status===404||r.status===401||!r.data||!r.data.settings){ location.replace('/'); return; }
     CFG=r.data;
     return api('/api/logs').then(function(l){ LOGS=(l.data&&l.data.logs)||[]; });
@@ -502,10 +562,52 @@ function ensureSecurity(){
   });
 }
 
-function secReload(){
-  SEC=null;
-  ensureSecurity();
+function loadUsage(){
+  return api('/api/config?days='+TREND_DAYS+'&offset='+TREND_OFF).then(function(r){
+    if(r.status===200&&r.data&&r.data.usage) CFG.usage=r.data.usage;
+  });
+}
+
+function setTrend(days,off){
+  if(TREND_BUSY) return;
+  TREND_BUSY=true;
+  TREND_DAYS=days;
+  TREND_OFF=Math.max(0,off||0);
   render();
+  loadUsage().then(function(){ TREND_BUSY=false; render(); },
+                   function(){ TREND_BUSY=false; render(); });
+}
+
+function trendCtl(){
+  var seg=[7,14,30].map(function(d){
+    return '<button class="segbtn'+(TREND_DAYS===d?' on':'')+'" data-trend="'+d+'">'+d+' 天</button>';
+  }).join('');
+  return '<div class="seg">'+seg+'</div>'+
+    '<button class="btn sm" data-trend-shift="1"'+(TREND_BUSY?' disabled':'')+'>‹ 更早</button>'+
+    '<button class="btn sm" data-trend-shift="-1"'+(TREND_OFF===0||TREND_BUSY?' disabled':'')+
+    '>更新 ›</button>';
+}
+
+function trendLabel(daily){
+  var d=(daily&&daily.days)||[];
+  if(!d.length) return '近 '+TREND_DAYS+' 天';
+  if(TREND_OFF===0) return '近 '+d.length+' 天';
+  return d[0]+' ~ '+d[d.length-1];
+}
+
+function secReload(btn){
+  if(btn){ btn.disabled=true; btn.innerHTML='刷新中…'; }
+  SEC=null;
+  SEC_LOADING=true;
+  api('/api/security').then(function(r){
+    SEC_LOADING=false;
+    if(r.status===200&&r.data) SEC=r.data;
+    render();
+  });
+}
+
+function markSvg(){
+  return "<svg viewBox='0 0 32 32' width='13' height='13' fill='none' stroke='currentColor' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M7 12h15m0 0-4-4m4 4-4 4'/><path d='M25 20H10m0 0 4 4m-4-4 4-4'/></svg>";
 }
 
 function render(){
@@ -523,10 +625,12 @@ function render(){
 
   document.getElementById('app').innerHTML=
    '<div class="topbar">'+
-     '<div class="brand"><span class="mark">R</span><span>'+esc(CFG.settings.siteName||'AI Relay')+'</span>'+
+     '<div class="brand"><span class="mark">'+markSvg()+'</span><span>'+esc(CFG.settings.siteName||'AI Relay')+'</span>'+
      '<span class="ver">v'+esc(VER)+'</span></div>'+
      '<div class="sp"></div>'+
      '<div class="stat"><span class="dot"></span>运行中 · 端口 '+CFG.settings.port+'</div>'+
+     '<button class="themebtn" id="themeBtn" data-theme-toggle="1" '+
+       'title="切换明暗主题">'+(THEME==='dark'?'亮色':'暗色')+'</button>'+
      '<button id="logout">退出</button>'+
    '</div>'+
    '<div class="tabs">'+tabs+'</div>'+
@@ -562,7 +666,7 @@ function viewOverview(){
     rows+='<tr><td>'+esc(x.name)+'</td>'+
       '<td class="num">'+numCell(x.tokens)+'</td>'+
       '<td><div style="display:flex;align-items:center;gap:8px"><div class="bar" style="flex:1"><i style="width:'+
-        Math.min(100,x.share)+'%"></i></div><span class="mono" style="color:#656d76;width:48px;text-align:right">'+
+        Math.min(100,x.share)+'%"></i></div><span class="mono" style="color:var(--muted);width:48px;text-align:right">'+
         pct(x.share)+'</span></div></td></tr>';
   }
 
@@ -571,7 +675,8 @@ function viewOverview(){
   else{
     logHtml='<div class="logbox">';
     var start=Math.max(0,LOGS.length-60);
-    for(var q=start;q<LOGS.length;q++){
+)HTML";
+static const char* kAdminJs2 = R"HTML(    for(var q=start;q<LOGS.length;q++){
       var line=LOGS[q];
       var idx=line.indexOf('] ');
       if(idx>0) logHtml+='<span class="t">'+esc(line.substring(0,idx+1))+'</span>'+esc(line.substring(idx+1))+'\n';
@@ -583,7 +688,7 @@ function viewOverview(){
   var port=CFG.settings.port;
   return '<div class="pagehead"><div><h2>概览</h2>'+
     '<div class="sub">'+esc(u.time||'')+' · OpenAI 兼容中转服务</div></div><div class="sp"></div>'+
-    '<button class="btn" onclick="refreshAll()">刷新</button></div>'+
+    '<button class="btn" onclick="refreshAll(this)">刷新</button></div>'+
    '<div class="grid">'+
      metric('用户数',fmt(users),(CFG.users||[]).filter(function(x){return x.enabled;}).length+' 个启用')+
      metric('AI 分组',fmt(groups),countApis()+' 个上游接口')+
@@ -625,8 +730,7 @@ function viewGroups(){
     '<div class="sub">每组可配置多个上游 API，模型名对外加分组前缀；上游连续异常 '+lim+
     ' 次后自动切到组内下一个提供同名（设置名）模型的上游，次日 0 点（北京时间）重置</div></div>'+
     '<div class="sp"></div>'+
-)HTML";
-static const char* kAdminJs2 = R"HTML(    '<button class="btn" onclick="resetApiFails(this)">重置异常计数</button>'+
+    '<button class="btn" onclick="resetApiFails(this)">重置异常计数</button>'+
     '<button class="btn primary" onclick="editGroup(null)">新建分组</button></div>';
   if(!gs.length){
     html+='<div class="card"><div class="empty">还没有分组。新建一个分组，填入上游 OpenAI 兼容地址与密钥。</div></div>';
@@ -818,6 +922,9 @@ document.addEventListener('click',function(e){
     if(el.getAttribute&&el.getAttribute('data-copy')!==null){
       copyText(el.getAttribute('data-copy'));return;
     }
+    if(el.getAttribute&&el.getAttribute('data-theme-toggle')!==null){
+      setTheme(THEME==='dark'?'light':'dark');return;
+    }
     el=el.parentNode;
   }
 });
@@ -836,11 +943,12 @@ function viewStats(){
     var ms=(x.models||[]).slice().sort(function(a,b){return b.tokens-a.tokens;});
     for(var k=0;k<ms.length;k++){
       mt+='<div style="display:flex;align-items:center;gap:8px;margin:2px 0">'+
-        '<span class="mono" title="'+esc(ms[k].model)+'" style="font-size:12px;flex:0 0 150px;'+
-        'width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#656d76">'+
+)HTML";
+static const char* kAdminJs3 = R"HTML(        '<span class="mono" title="'+esc(ms[k].model)+'" style="font-size:12px;flex:0 0 150px;'+
+        'width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)">'+
         esc(ms[k].model)+'</span>'+
         '<div class="bar g" style="flex:1"><i style="width:'+Math.min(100,ms[k].share)+'%"></i></div>'+
-        '<span class="mono" style="width:44px;text-align:right;color:#656d76">'+pct(ms[k].share)+'</span></div>';
+        '<span class="mono" style="width:44px;text-align:right;color:var(--muted)">'+pct(ms[k].share)+'</span></div>';
     }
     if(!mt) mt='<span class="hint">-</span>';
     rows+='<tr><td>'+esc(x.name)+'</td>'+
@@ -856,7 +964,7 @@ function viewStats(){
     mrows+='<tr><td class="mono">'+esc(models[q].model)+'</td>'+
       '<td class="num">'+numCell(models[q].tokens)+'</td>'+
       '<td><div style="display:flex;align-items:center;gap:8px"><div class="bar" style="flex:1"><i style="width:'+
-      Math.min(100,models[q].share)+'%"></i></div><span class="mono" style="color:#656d76;width:48px;text-align:right">'+
+      Math.min(100,models[q].share)+'%"></i></div><span class="mono" style="color:var(--muted);width:48px;text-align:right">'+
       pct(models[q].share)+'</span></div></td></tr>';
   }
   if(!mrows) mrows='<tr><td colspan="3"><div class="empty">暂无统计数据</div></td></tr>';
@@ -867,7 +975,7 @@ function viewStats(){
   (daily.total||[]).forEach(function(v){ totalSum+=v; });
   var totalChart='<div class="empty">暂无用量数据</div>';
   if(labels.length&&totalSum>0){
-    totalChart=svgLineChart(labels,[{name:'全体',color:'#0969da',values:daily.total}],{area:true});
+    totalChart=svgLineChart(labels,[{name:'全体',color:accentHex(),values:daily.total}],{area:true});
   }
   var usersAll=(daily.users||[]).slice(0,12);
   var series=usersAll.map(function(x,i){
@@ -880,39 +988,60 @@ function viewStats(){
       (shown.length?svgLineChart(labels,shown,{}):'<div class="empty">已全部隐藏，点击图例恢复</div>');
   }
 
+  if(TREND_BUSY){ totalChart='<div class="empty">载入中…</div>'; userChart='<div class="empty">载入中…</div>'; }
+
   var fail=(CFG.usage&&CFG.usage.failures)||{};
   var fr=fail[RANGE]||{total:0,apis:[],models:[]};
   var fth=(fail.threshold!==undefined)?fail.threshold:(CFG.failLimit||0);
   var fnote=(fth>0)?('阈值 '+fth+' 次'):'阈值 0（不熔断，异常立即重试）';
-  var gapis='';
-  var fapis=(fr.apis||[]).slice().sort(function(a,b){return b.count-a.count;});
-  for(var fi=0;fi<fapis.length;fi++){
-    var fa=fapis[fi];
-    gapis+='<tr><td>'+esc(fa.group)+' / '+esc(fa.name)+'</td>'+
-)HTML";
-static const char* kAdminJs3 = R"HTML(      '<td class="num">'+fmt(fa.count)+'</td>'+
-      '<td style="min-width:160px"><div style="display:flex;align-items:center;gap:8px">'+
-      '<div class="bar" style="flex:1"><i style="width:'+Math.min(100,fa.share)+'%"></i></div>'+
-      '<span class="mono" style="color:#656d76;width:48px;text-align:right">'+pct(fa.share)+'</span></div></td></tr>';
+  // 模型请求次数 = 成功（用量记录）+ 失败（异常记录），合成一条进度条
+  var mmap={};
+  var mlist=(rd.models||[]);
+  for(var mi=0;mi<mlist.length;mi++){
+    var mo=mlist[mi];
+    if(!mmap[mo.model]) mmap[mo.model]={model:mo.model,ok:0,bad:0};
+    mmap[mo.model].ok+=mo.requests||0;
   }
-  if(!gapis) gapis='<tr><td colspan="3"><div class="empty">暂无上游失败记录</div></td></tr>';
-  var fmodels='';
-  var fms=(fr.models||[]).slice().sort(function(a,b){return b.count-a.count;});
-  for(var fm=0;fm<fms.length;fm++){
-    fmodels+='<tr><td class="mono">'+esc(fms[fm].model)+'</td>'+
-      '<td class="num">'+fmt(fms[fm].count)+'</td>'+
-      '<td style="min-width:160px"><div style="display:flex;align-items:center;gap:8px">'+
-      '<div class="bar" style="flex:1"><i style="width:'+Math.min(100,fms[fm].share)+'%"></i></div>'+
-      '<span class="mono" style="color:#656d76;width:48px;text-align:right">'+pct(fms[fm].share)+'</span></div></td></tr>';
+  var fms=(fr.models||[]);
+  for(var fi=0;fi<fms.length;fi++){
+    var fmx=fms[fi];
+    if(!mmap[fmx.model]) mmap[fmx.model]={model:fmx.model,ok:0,bad:0};
+    mmap[fmx.model].bad+=fmx.count||0;
   }
-  if(!fmodels) fmodels='<tr><td colspan="3"><div class="empty">暂无模型失败记录</div></td></tr>';
+  var mrows2=[];
+  for(var key in mmap){
+    if(!Object.prototype.hasOwnProperty.call(mmap,key)) continue;
+    var it=mmap[key];
+    it.total=it.ok+it.bad;
+    mrows2.push(it);
+  }
+  mrows2.sort(function(a,b){return b.total-a.total;});
+  var reqTotal=0;
+  for(var ri=0;ri<mrows2.length;ri++) reqTotal+=mrows2[ri].total;
+  var mut='';
+  for(var rj=0;rj<mrows2.length;rj++){
+    var rw=mrows2[rj];
+    var okPct=rw.total>0?(rw.ok*100/rw.total):0;
+    var badPct=rw.total>0?(rw.bad*100/rw.total):0;
+    var sharePct=reqTotal>0?(rw.total*100/reqTotal):0;
+    mut+='<tr><td class="mono">'+esc(rw.model)+'</td>'+
+      '<td class="num">'+fmt(rw.total)+'</td>'+
+      '<td class="num">'+pct(sharePct)+'</td>'+
+      '<td style="min-width:220px"><div style="display:flex;align-items:center;gap:8px">'+
+      '<div class="bar g" style="flex:1"><i style="width:'+okPct.toFixed(2)+'%"></i>'+
+      (badPct>0?'<b style="width:'+badPct.toFixed(2)+'%"></b>':'')+'</div>'+
+      '<span class="mono" style="flex:0 0 96px;text-align:right;color:var(--muted);'+
+      'white-space:nowrap;overflow:hidden">'+
+      fmt(rw.ok)+'/'+fmt(rw.total)+'</span></div></td></tr>';
+  }
+  if(!mut) mut='<tr><td colspan="4"><div class="empty">暂无请求记录</div></td></tr>';
 
   return '<div class="pagehead"><div><h2>统计</h2>'+
     '<div class="sub">'+esc(u.time||'')+' · '+RANGE_LABEL[RANGE]+'共 '+
     '<span title="'+fmt(rd.tokens)+'">'+fmtBig(rd.tokens)+'</span> tokens · '+
     fmt(rd.requests)+' 次请求 · 失败 '+fmt(fr.total||0)+' 次</div></div><div class="sp"></div>'+
     rangeTabs()+
-    '<button class="btn" onclick="refreshAll()">刷新</button></div>'+
+    '<button class="btn" onclick="refreshAll(this)">刷新</button></div>'+
    '<div class="card"><div class="card-h">各用户用量'+
      '<span class="label gray">'+RANGE_LABEL[RANGE]+'</span></div><div class="card-b tight">'+
      '<table><thead><tr><th>用户</th><th class="num">用量（tokens）</th>'+
@@ -922,25 +1051,30 @@ static const char* kAdminJs3 = R"HTML(      '<td class="num">'+fmt(fa.count)+'</
      '<span class="label gray">'+RANGE_LABEL[RANGE]+'</span></div><div class="card-b tight">'+
      '<table><thead><tr><th>模型</th><th class="num">用量（tokens）</th><th>占比</th></tr></thead>'+
      '<tbody>'+mrows+'</tbody></table></div></div>'+
-   '<div class="card"><div class="card-h">上游失败次数'+
+   '<div class="card"><div class="card-h">模型请求次数'+
      '<span class="label gray">'+RANGE_LABEL[RANGE]+'</span>'+
-     '<span class="label '+(fth>0?'gray':'blue')+'">'+esc(fnote)+'</span>'+
-     '<div class="sp"></div><span class="hint" style="margin:0">共 '+fmt(fr.total||0)+' 次</span></div>'+
-     '<div class="card-b tight"><table><thead><tr><th>上游（分组 / 名称）</th>'+
-     '<th class="num">失败次数</th><th>占比</th></tr></thead><tbody>'+gapis+'</tbody></table></div></div>'+
-   '<div class="card"><div class="card-h">模型失败次数'+
-     '<span class="label gray">'+RANGE_LABEL[RANGE]+'</span></div><div class="card-b tight">'+
-     '<table><thead><tr><th>模型</th><th class="num">失败次数</th><th>占比</th></tr></thead>'+
-     '<tbody>'+fmodels+'</tbody></table></div></div>'+
-   '<div class="card"><div class="card-h">每日用量趋势（全体 · 近 14 天）</div>'+
+     '<div class="sp"></div><span class="hint" style="margin:0">共 '+fmt(reqTotal)+
+     ' 次 · 失败 '+fmt(fr.total||0)+' 次</span></div>'+
+     '<div class="card-b tight"><table><thead><tr><th>模型</th>'+
+     '<th class="num">请求次数</th><th class="num">占比</th>'+
+     '<th style="width:260px">成功 / 总数</th></tr></thead>'+
+     '<tbody>'+mut+'</tbody></table></div></div>'+
+   '<div class="card"><div class="card-h">每日用量趋势（全体）'+
+     '<span class="label gray">'+esc(trendLabel(daily))+'</span>'+
+     '<div class="sp"></div>'+trendCtl()+'</div>'+
      '<div class="card-b">'+totalChart+'</div></div>'+
-   '<div class="card"><div class="card-h">每人每日用量（近 14 天）'+
+   '<div class="card"><div class="card-h">每人每日用量'+
+     '<span class="label gray">'+esc(trendLabel(daily))+'</span>'+
      '<div class="sp"></div><span class="hint" style="margin:0">点击图例可隐藏/显示</span></div>'+
      '<div class="card-b">'+userChart+'</div></div>';
 }
 
-function refreshAll(){
-  loadAll().then(function(){ render(); });
+function refreshAll(btn){
+  var label=btn?btn.innerHTML:'';
+  if(btn){ btn.disabled=true; btn.innerHTML='刷新中…'; }
+  loadAll().then(function(){ render(); }, function(){
+    if(btn){ btn.disabled=false; btn.innerHTML=label; }
+  });
 }
 
 /* ---------------- security ---------------- */
@@ -950,7 +1084,7 @@ function ipTag(list, action){
   return list.map(function(ip){
     return '<span class="label gray" style="margin:0 6px 6px 0;display:inline-flex;align-items:center;gap:6px">'+
       esc(ip)+'<a href="#" data-sec-remove="'+action+'" data-ip="'+esc(ip)+
-      '" style="color:#cf222e;text-decoration:none">×</a></span>';
+      '" style="color:var(--red);text-decoration:none">×</a></span>';
   }).join('');
 }
 
@@ -971,7 +1105,7 @@ function viewSecurity(){
 
   return '<div class="pagehead"><div><h2>安全</h2>'+
     '<div class="sub">登录锁定、失败来源与 IP 访问控制</div></div><div class="sp"></div>'+
-    '<button class="btn" onclick="secReload()">刷新</button></div>'+
+    '<button class="btn" onclick="secReload(this)">刷新</button></div>'+
    '<div class="card"><div class="card-h">登录锁定</div><div class="card-b">'+
      '<div class="row2">'+
        '<div><div class="hint" style="margin:0 0 4px">状态</div>'+
@@ -1016,6 +1150,80 @@ function secAction(action,ip){
 
 /* ---------------- settings ---------------- */
 
+var UPD=null, UPD_BUSY=false;
+
+function updBody(){
+  var u=UPD;
+  if(UPD_BUSY) return '<div class="tlsline">正在处理…</div>';
+  if(!u) return '<div class="hint" style="margin:0">仓库：<code>LhyCloud/AI-API-Relay-Station</code>，'+
+    '点「检查更新」查询最新 Release。</div>';
+  if(u.error) return '<div class="tlsline bad">检查失败：'+esc(u.error)+'</div>';
+  var h='';
+  if(u.hasUpdate){
+    h+='<div class="tlsline warn">发现新版本 <b>'+esc(u.latest)+'</b>（当前 '+esc(u.current)+'）</div>';
+  }else{
+    h+='<div class="tlsline ok">已是最新版本（'+esc(u.current)+'）</div>';
+  }
+  if(u.latest){
+    h+='<div class="tlsrow"><span>最新版本</span><code>'+esc(u.latest)+'</code></div>';
+    h+='<div class="tlsrow"><span>发布时间</span><code>'+esc(u.publishedAt||'-')+'</code></div>';
+)HTML";
+static const char* kAdminJs4 = R"HTML(    h+='<div class="tlsrow"><span>更新包</span><code>'+esc(u.assetName||'（无 ai-relay.exe）')+'</code></div>';
+  }
+  if(u.hasUpdate&&!u.canApply){
+    h+='<div class="hint">这个 Release 里没有 ai-relay.exe，无法自动更新，请手动下载。</div>';
+  }
+  if(u.notes){
+    h+='<div class="updnote">'+esc(u.notes)+'</div>';
+  }
+  return h;
+}
+
+function checkUpdate(btn){
+  if(UPD_BUSY) return;
+  UPD_BUSY=true;
+  if(btn){ btn.disabled=true; btn.innerHTML='检查中…'; }
+  api('/api/update/check','POST',{}).then(function(r){
+    UPD_BUSY=false;
+    if(r.status!==200||!r.data){ UPD={error:'请求失败（HTTP '+r.status+'）'}; }
+    else if(r.data.ok===false){ UPD={error:r.data.error||'检查失败'}; }
+    else { UPD=r.data; }
+    render();
+  },function(){
+    UPD_BUSY=false; UPD={error:'网络请求失败'}; render();
+  });
+}
+
+function applyUpdate(btn){
+  if(UPD_BUSY||!UPD||!UPD.canApply) return;
+  if(!confirm('更新到 v'+UPD.latest+'？\n会下载新版本、替换 ai-relay.exe 并自动重启服务（约 1~3 秒内完成切换）。')) return;
+  UPD_BUSY=true;
+  if(btn){ btn.disabled=true; btn.innerHTML='正在下载…'; }
+  api('/api/update/apply','POST',{}).then(function(r){
+    if(r.status!==200){
+      UPD_BUSY=false;
+      toast((r.data&&r.data.error&&r.data.error.message)||'更新失败',true);
+      render();
+      return;
+    }
+    toast((r.data&&r.data.message)||'正在重启…');
+    waitRestart();
+  },function(){
+    UPD_BUSY=false; toast('更新请求失败',true); render();
+  });
+}
+
+function waitRestart(){
+  var tries=0;
+  var timer=setInterval(function(){
+    tries++;
+    api('/api/session').then(function(r){
+      if(r.status===200){ clearInterval(timer); location.reload(); }
+    },function(){});
+    if(tries>60){ clearInterval(timer); toast('服务未在 2 分钟内恢复，请手动启动 ai-relay.exe',true); }
+  },2000);
+}
+
 function viewSettings(){
   var s=CFG.settings;
   var off=Number(s.resetOffsetMinutes||0);
@@ -1043,6 +1251,17 @@ function viewSettings(){
        '<input type="password" id="s_pw" autocomplete="new-password" placeholder="留空则不修改">'+
        '<div class="hint">密码经加盐哈希后传输与保存，明文不会出现在网络上或配置文件中。</div></div>'+
      '<div style="display:flex;gap:8px"><button class="btn primary" id="saveSettings">保存设置</button></div>'+
+   '</div></div>'+
+   '<div class="card" style="max-width:560px"><div class="card-h">版本更新'+
+     '<span class="label gray">v'+esc(VER)+'</span></div><div class="card-b">'+
+     updBody()+
+     '<div style="display:flex;gap:8px;margin-top:12px">'+
+       '<button class="btn" id="updCheck">检查更新</button>'+
+       '<button class="btn primary" id="updApply"'+
+         ((UPD&&UPD.canApply&&!UPD_BUSY)?'':' disabled')+'>下载并更新</button>'+
+     '</div>'+
+     '<div class="hint">更新会下载 ai-relay.exe 覆盖当前程序并自动重启（旧文件备份为 ai-relay.exe.old）；'+
+     'Release 里没有 ai-relay.exe 时不会做任何改动。</div>'+
    '</div></div>'+
    '<div class="card"><div class="card-h">数据文件</div><div class="card-b">'+
      '<div class="hint">所有配置与用量保存在程序目录下的 <code>relay-data.json</code>，'+
@@ -1095,8 +1314,7 @@ function groupForm(g){
       '</div>'+
       '<div class="row2">'+
         '<div class="form-row"><label>基础地址</label><input type="text" data-f="baseUrl" data-i="'+i+
-)HTML";
-static const char* kAdminJs4 = R"HTML(          '" value="'+esc(a.baseUrl)+'" placeholder="https://api.openai.com/v1"></div>'+
+          '" value="'+esc(a.baseUrl)+'" placeholder="https://api.openai.com/v1"></div>'+
         '<div class="form-row"><label>每日限额（M tokens，0=不限）</label>'+
           '<input type="number" min="0" step="0.001" data-f="dailyLimitM" data-i="'+i+
           '" value="'+(a.dailyLimitM||0)+'"><div class="hint">北京时间 0 点重置，超限自动切换组内下一个 API</div></div>'+
@@ -1209,7 +1427,8 @@ function filterModels(i,text){
   var rows=box.querySelectorAll('.mrow');
   for(var k=0;k<rows.length;k++){
     var n=rows[k].getAttribute('data-row')||'';
-    rows[k].style.display=(!q||n.toLowerCase().indexOf(q)>=0)?'':'none';
+)HTML";
+static const char* kAdminJs5 = R"HTML(    rows[k].style.display=(!q||n.toLowerCase().indexOf(q)>=0)?'':'none';
   }
 }
 
@@ -1386,8 +1605,7 @@ function saveGroup(){
 
 function delGroup(i){
   var g=CFG.groups[i];
-)HTML";
-static const char* kAdminJs5 = R"HTML(  if(!confirm('删除分组「'+g.name+'」？引用它的用户将失去该分组。')) return;
+  if(!confirm('删除分组「'+g.name+'」？引用它的用户将失去该分组。')) return;
   var payload=clone(CFG);
   delete payload.usage;
   payload.groups.splice(i,1);
@@ -1467,6 +1685,23 @@ function sendConfig(payload,okMsg){
 }
 
 function bindView(){
+  var ucb=document.getElementById('updCheck');
+  if(ucb) ucb.onclick=function(){ checkUpdate(this); };
+  var uab=document.getElementById('updApply');
+  if(uab) uab.onclick=function(){ applyUpdate(this); };
+  var tds=document.querySelectorAll('#app [data-trend]');
+  for(var ti=0;ti<tds.length;ti++){
+    tds[ti].onclick=function(){
+      setTrend(parseInt(this.getAttribute('data-trend'),10),0);
+    };
+  }
+  var tss=document.querySelectorAll('#app [data-trend-shift]');
+  for(var ts=0;ts<tss.length;ts++){
+    tss[ts].onclick=function(){
+      var dir=parseInt(this.getAttribute('data-trend-shift'),10)||1;
+      setTrend(TREND_DAYS,Math.max(0,TREND_OFF+dir*TREND_DAYS));
+    };
+  }
   var rbs=document.querySelectorAll('#app [data-range]');
   for(var i=0;i<rbs.length;i++){
     rbs[i].onclick=function(){
@@ -1512,7 +1747,8 @@ function bindView(){
     blAdd.onclick=function(){
       var v=(document.getElementById('sec_bl').value||'').trim();
       if(!v) return;
-      if(!confirm('拉黑 '+v+' 后该 IP 访问任何路径都不会有响应，确定？')) return;
+)HTML";
+static const char* kAdminJs6 = R"HTML(      if(!confirm('拉黑 '+v+' 后该 IP 访问任何路径都不会有响应，确定？')) return;
       secAction('blacklist',v);
     };
   }
@@ -1579,11 +1815,11 @@ const std::string& hashJs() {
 }
 
 const std::string& adminHtml() {
-    static const std::string s = std::string(kAdminHtml1);
+    static const std::string s = std::string(kAdminHtml1) + kAdminHtml2;
     return s;
 }
 
 const std::string& adminJs() {
-    static const std::string s = std::string(kAdminJs1) + kAdminJs2 + kAdminJs3 + kAdminJs4 + kAdminJs5;
+    static const std::string s = std::string(kAdminJs1) + kAdminJs2 + kAdminJs3 + kAdminJs4 + kAdminJs5 + kAdminJs6;
     return s;
 }
